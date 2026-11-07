@@ -3404,8 +3404,11 @@ function loop(t){
 }
 
 /* ===== v3.3.4：镜头检测 / 长焦切换 / 变焦放大取景框 / 版本更新 ===== */
-const APP_VER='11.1.0';
+const APP_VER='11.1.1';
 const UPDATES=[
+ {v:'11.1.1',d:'2026年11月7日',items:[
+  '<b>修复原生液态玻璃叠层把关闭的面板也显示出来：</b>设置面板、宽高比面板、功能面板、弹窗等平时是用透明度 0 隐藏的（不是 display:none），原生玻璃叠层之前没有检查这一点，把这些「关着」的面板也当成要显示的玻璃块糊在画面上，导致看起来有好几块毛玻璃叠在一起挡住取景。现在只有真正展开的面板才会叠玻璃。',
+ ]},
  {v:'11.1.0',d:'2026年11月7日',items:[
   '<b>苹果原生 App：</b>照片 / 实况 / 视频可以直接保存进系统相册（更多设置 → 苹果原生，默认先存澄影相册）；实况用系统接口写成真正的实况照片；相册导入走系统选择器，实况连视频一起导入，编辑后仍可存成实况；规格面板新增照片格式 JPEG / HEIF / ProRAW；打开时检测摄像头并马上预热；iOS 26 上用系统原生液态玻璃。',
   '<b>360° 全景连续拍摄：</b>点快门后立刻就能再拍下一张，不用等上一张保存完；按住快门每 0.2 秒左右连拍一张。JPEG 压缩改到后台排队，覆盖地图和缩略图条只增量更新，张数多了也不会越拍越慢。自动模式冷却从 0.7 秒缩短到 0.12 秒。',
@@ -5240,7 +5243,11 @@ const LG=window.LG=(()=>{
     get:()=>Object.assign({},st),
     set(o,noSave){if(o.theme&&['glass','dark','light'].includes(o.theme))st.theme=o.theme;if(typeof o.strength==='number')st.strength=Math.max(0,Math.min(1,o.strength));apply();if(!noSave){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(_){}}emit()},
     onChange:f=>subs.push(f),
-    surfaces(){mark();return[...app.querySelectorAll('[data-lg]')].filter(el=>el.offsetParent!==null||el.id==='bar').map((el,i)=>{const r=el.getBoundingClientRect();return{id:el.id||('lg'+i),kind:el.dataset.lg,x:r.x,y:r.y,w:r.width,h:r.height,radius:parseFloat(getComputedStyle(el).borderTopLeftRadius)||0}})}
+    surfaces(){mark();
+      const vis=el=>{try{if(el.checkVisibility)return el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})}catch(_){}
+        for(let n=el;n;n=n.parentElement){const cs=getComputedStyle(n);if(cs.display==='none'||cs.visibility==='hidden'||parseFloat(cs.opacity)<=.01)return false;if(n===app)break}
+        return true};
+      return[...app.querySelectorAll('[data-lg]')].filter(el=>(el.offsetParent!==null||el.id==='bar')&&vis(el)).map((el,i)=>{const r=el.getBoundingClientRect();return{id:el.id||('lg'+i),kind:el.dataset.lg,x:r.x,y:r.y,w:r.width,h:r.height,radius:parseFloat(getComputedStyle(el).borderTopLeftRadius)||0}})}
   };
   apply();return LG;
 })();
