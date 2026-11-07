@@ -1,0 +1,6 @@
+Lucida.xcodeproj/
+build/
+DerivedData/
+*.ipa
+.DS_Store
+Lucida/Info.plist

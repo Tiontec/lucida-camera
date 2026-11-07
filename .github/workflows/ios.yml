@@ -1,0 +1,133 @@
+name: 澄影 iOS 自动打包
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore: ['**.md']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'GitHub 运行器（要原生液态玻璃用 macos-26；macos-26 不可用时改 macos-15，玻璃叠层会自动关闭）'
+        required: false
+        default: 'macos-26'
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned-ipa:
+    name: 未签名 IPA（可用 AltStore / Sideloadly / TrollStore 自行签名安装）
+    runs-on: ${{ inputs.runner || 'macos-26' }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 选择最新稳定版 Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        run: xcodegen generate
+
+      - name: 编译（真机 Release，不签名）
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Lucida.xcodeproj -scheme Lucida \
+            -configuration Release -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tee build.log | tail -n 60
+
+      - name: 打包为 IPA
+        run: |
+          APP=$(find build/Build/Products -maxdepth 2 -name "Lucida.app" | head -n 1)
+          test -d "$APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry Lucida-unsigned.ipa Payload
+          ls -la Lucida-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lucida-unsigned-ipa
+          path: Lucida-unsigned.ipa
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log
+          path: build.log
+
+  signed-ipa:
+    name: 已签名 IPA（填好 Secrets 才会运行）
+    runs-on: ${{ inputs.runner || 'macos-26' }}
+    timeout-minutes: 45
+    env:
+      HAS_SIGNING: ${{ secrets.IOS_CERT_P12_BASE64 != '' && secrets.IOS_PROFILE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_SIGNING == 'true'
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: env.HAS_SIGNING == 'true'
+        with:
+          xcode-version: latest-stable
+      - name: 安装 XcodeGen 并生成工程
+        if: env.HAS_SIGNING == 'true'
+        run: brew install xcodegen && xcodegen generate
+
+      - name: 导入证书和描述文件
+        if: env.HAS_SIGNING == 'true'
+        env:
+          CERT_P12: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          KC="$RUNNER_TEMP/lucida.keychain-db"; KCP="$(uuidgen)"
+          security create-keychain -p "$KCP" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCP" "$KC"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KCP" "$KC"
+          security list-keychain -d user -s "$KC" login.keychain
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/p.mobileprovision"
+          UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< "$(security cms -D -i "$RUNNER_TEMP/p.mobileprovision")")
+          NAME=$(/usr/libexec/PlistBuddy -c "Print Name" /dev/stdin <<< "$(security cms -D -i "$RUNNER_TEMP/p.mobileprovision")")
+          TEAM=$(/usr/libexec/PlistBuddy -c "Print TeamIdentifier:0" /dev/stdin <<< "$(security cms -D -i "$RUNNER_TEMP/p.mobileprovision")")
+          cp "$RUNNER_TEMP/p.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+          echo "PROFILE_NAME=$NAME" >> $GITHUB_ENV
+          echo "TEAM_ID=$TEAM" >> $GITHUB_ENV
+
+      - name: 归档并导出 IPA
+        if: env.HAS_SIGNING == 'true'
+        env:
+          EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD || 'ad-hoc' }}
+        run: |
+          xcodebuild -project Lucida.xcodeproj -scheme Lucida -configuration Release \
+            -archivePath build/Lucida.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" CODE_SIGN_IDENTITY="Apple Distribution" \
+            archive
+          P=build/ExportOptions.plist
+          /usr/libexec/PlistBuddy -c "Add :method string $EXPORT_METHOD" "$P"
+          /usr/libexec/PlistBuddy -c "Add :teamID string $TEAM_ID" "$P"
+          /usr/libexec/PlistBuddy -c "Add :signingStyle string manual" "$P"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$P"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.lucida.camera string $PROFILE_NAME" "$P"
+          xcodebuild -exportArchive -archivePath build/Lucida.xcarchive \
+            -exportOptionsPlist build/ExportOptions.plist -exportPath build/export
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_SIGNING == 'true'
+        with:
+          name: Lucida-signed-ipa
+          path: build/export/*.ipa
