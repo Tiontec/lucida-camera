@@ -5,7 +5,6 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
     private(set) var webView: WKWebView!
     private let bridge = NativeBridge()
     private let legacy = LegacyHandler()
-    let glass = GlassOverlay()
 
     override var prefersStatusBarHidden: Bool { false }
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
@@ -51,7 +50,6 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         view.addSubview(wv)
         webView = wv
 
-        glass.attach(to: view)
         bridge.host = self
         legacy.host = self
 
@@ -124,11 +122,6 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         webView.load(URLRequest(url: URL(string: "lucida://app/index.html")!))
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        glass.layoutIfNeeded()
-    }
-
     // 回调网页：evaluateJavaScript 的封装
     func js(_ code: String) {
         DispatchQueue.main.async { [weak self] in self?.webView?.evaluateJavaScript(code, completionHandler: nil) }
@@ -149,7 +142,7 @@ final class LegacyHandler: NSObject, WKScriptMessageHandler {
                 host?.js("window.lucidaLiveResult&&window.lucidaLiveResult(\(ok ? "true" : "false"),'\(m)')")
             }
         default:
-            break   // lucidaLG / lucidaSkin：状态由 NativeBridge 的 glass 消息统一处理
+            break   // lucidaLG（主题状态）/ lucidaSkin：原生液态玻璃叠层已整体去掉，这两个消息目前原生侧不处理
         }
     }
 }

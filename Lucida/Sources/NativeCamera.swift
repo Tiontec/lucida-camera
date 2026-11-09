@@ -17,6 +17,8 @@ final class NativeCamera: NSObject, AVCapturePhotoCaptureDelegate {
     private var wantRaw = false
     private var wantHEIF = false
     private var failMsg: String?
+    private var restoreDevice: AVCaptureDevice?
+    private var restoreZoom: CGFloat = 1
 
     /// body: position("back"|"front"), zoom(网页倍率，1=主摄), format("jpeg"|"heif"|"raw"), orientation(UIDeviceOrientation.rawValue)
     func capture(body: [String: Any], completion: @escaping ([String: Any]) -> Void) {
@@ -31,7 +33,25 @@ final class NativeCamera: NSObject, AVCapturePhotoCaptureDelegate {
 
     private func fail(_ msg: String, _ completion: @escaping ([String: Any]) -> Void) {
         if session.isRunning { session.stopRunning() }
+        cleanup()
         DispatchQueue.main.async { completion(["ok": false, "error": msg]) }
+    }
+
+    /// 拍完把摄像头还原：摘掉输入输出（把摄像头还给网页取景用），并把拍照时设的变焦倍数 / 格式恢复。
+    /// 之前没有还原，拍过 ProRAW 之后网页再打开取景，摄像头还停在原生设置的倍数 / 高像素格式上，
+    /// 画面被二次放大、帧率也被限制，表现为「全景 / 取景发糊发卡」。
+    private func cleanup() {
+        session.beginConfiguration()
+        session.inputs.forEach { session.removeInput($0) }
+        session.outputs.forEach { session.removeOutput($0) }
+        session.commitConfiguration()
+        if let d = restoreDevice {
+            if (try? d.lockForConfiguration()) != nil {
+                d.videoZoomFactor = min(max(restoreZoom, d.minAvailableVideoZoomFactor), d.maxAvailableVideoZoomFactor)
+                d.unlockForConfiguration()
+            }
+        }
+        restoreDevice = nil
     }
 
     private func run(position: AVCaptureDevice.Position, zoom: Double, format: String,
@@ -51,6 +71,7 @@ final class NativeCamera: NSObject, AVCapturePhotoCaptureDelegate {
 
         self.completion = completion
         self.processed = nil; self.rawData = nil; self.failMsg = nil
+        restoreDevice = device; restoreZoom = device.videoZoomFactor
         wantRaw = (format == "raw"); wantHEIF = (format == "heif")
 
         session.beginConfiguration()
@@ -120,6 +141,7 @@ final class NativeCamera: NSObject, AVCapturePhotoCaptureDelegate {
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
         session.stopRunning()
+        cleanup()
         let cb = completion; completion = nil
         guard let done = cb else { return }
         guard processed != nil || rawData != nil else {

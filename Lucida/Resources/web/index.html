@@ -192,6 +192,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 .mabout{text-align:center;padding-top:18px}
 .mabout .logo{width:84px;height:84px;border-radius:20px;margin:0 auto 14px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.5),0 0 40px rgba(110,130,255,.2)}
 .mabout .logo svg{width:100%;height:100%;display:block}
+.mabout .logo img{width:100%;height:100%;display:block;object-fit:cover;transform:scale(1.035);pointer-events:none}
 .mabout h3{margin:0;font-size:22px;font-weight:600;letter-spacing:6px}
 .mabout .ver{font-size:11px;letter-spacing:2px;opacity:.5;margin:6px 0 10px}
 .mabout .msec{text-align:left}
@@ -667,6 +668,8 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 .pnempty svg{width:54px;height:54px;opacity:.5;margin-bottom:10px}
 /* 查看器 */
 #pnGL,#pnCam,#pnHud{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;display:block}
+#pnVid{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;display:none;object-fit:cover;background:#000;pointer-events:none}
+#pnCap.vid #pnVid{display:block}#pnCap.vid #pnCam{visibility:hidden}
 #pnGL{touch-action:none;background:#000}
 .pnbar{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:0 12px;pointer-events:none;transition:opacity .3s,transform .35s var(--ease)}
 .pnbar>*{pointer-events:auto}
@@ -1567,6 +1570,10 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 #lfRows .mt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}#lfRows .zsd{font-size:12px;opacity:.6;font-weight:400;line-height:1.35}
 #lfRows .zck{width:22px;height:22px;color:var(--yellow);opacity:0;transform:scale(.6);transition:.25s var(--ease);flex:none}#lfRows .mrow.on .zck{opacity:1;transform:none}
 #lfRows{margin-bottom:18px}
+#ldRows .mrow{padding-top:12px;padding-bottom:12px;min-height:64px;height:auto;align-items:center}#ldRows .mi{flex:none}
+#ldRows .mt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}#ldRows .zsd{font-size:12px;opacity:.6;font-weight:400;line-height:1.35}
+#ldRows .zck{width:22px;height:22px;color:var(--yellow);opacity:0;transform:scale(.6);transition:.25s var(--ease);flex:none}#ldRows .mrow.on .zck{opacity:1;transform:none}
+#ldRows{margin-bottom:18px}
 /* ===== 皮肤包 v2：贴纸 / 角色 / 动作 / 页面壁纸 ===== */
 #skpTop{position:absolute;inset:0;z-index:59;pointer-events:none;overflow:hidden}
 #skpLayer .fx{position:absolute;inset:0;z-index:6}
@@ -2025,8 +2032,11 @@ input[type=range].lgp::-moz-range-thumb{transform:scale(1.62,1.46);background:rg
 <div class="msec">360° 全景拼接融合</div>
 <div class="mlist" id="pblRows"><button class="mrow lit" data-v="soft"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c3-6 6-6 9 0s6 6 9 0"/></svg><span class="mt">柔和羽化（推荐）<small class="zsd">接缝处按离画面中心远近柔和过渡，整体自然、没有硬接缝（第一版的效果）</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="detail"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h6v6H4zM14 12h6v6h-6z"/></svg><span class="mt">细节优先（两频段）<small class="zsd">低频柔和、细节取最近一张，近处物体更少重影，但接缝处可能出现切割线</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
 <div class="msec">实况帧率</div>
-<div class="mlist" id="lfRows"><button class="mrow lit" data-v="15"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span class="mt">15 帧<small class="zsd">最省内存和电量</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="30"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span class="mt">30 帧（推荐）<small class="zsd">流畅，内存适中</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="60"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span class="mt">60 帧<small class="zsd">最顺滑；占内存更多，实况画面降为 540 像素长边</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<div class="mlist" id="lfRows"><button class="mrow lit" data-v="15"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span class="mt">15 帧<small class="zsd">最省内存和电量</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="30"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span class="mt">30 帧（推荐）<small class="zsd">流畅，内存适中</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="60"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span class="mt">60 帧<small class="zsd">最顺滑；每帧像素会比 30 帧略小</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
 <div class="mnote" style="padding:2px 16px 10px;font-size:11.5px;opacity:.6;line-height:1.5">只影响之后拍的实况，也决定编辑后实况视频重新生成时的帧率。已拍好的 15 帧实况无法凭空补帧。</div>
+<div class="msec">实况时长</div>
+<div class="mlist" id="ldRows"><button class="mrow lit" data-v="3"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 1.5M9.5 3.5h5"/></svg><span class="mt">3 秒（默认）<small class="zsd">快门前 1.5 秒 + 快门后 1.5 秒</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="5"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 1.5M9.5 3.5h5"/></svg><span class="mt">5 秒<small class="zsd">快门前 1.5 秒 + 快门后 3.5 秒</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="6"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 1.5M9.5 3.5h5"/></svg><span class="mt">6 秒<small class="zsd">快门前 1.5 秒 + 快门后 4.5 秒</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="8"><svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 1.5M9.5 3.5h5"/></svg><span class="mt">8 秒<small class="zsd">快门前 1.5 秒 + 快门后 6.5 秒；建议配 15～30 帧</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
+<div class="mnote" style="padding:2px 16px 10px;font-size:11.5px;opacity:.6;line-height:1.5">只影响之后拍的实况。快门前固定记录 1.5 秒，其余时间在按下快门后继续记录；拍的时候灵动岛里会显示「实况 x.x/总秒数s」和「实况 合成中…」（设置里选了「无灵动岛」才会用弹窗）。时间越长，合成越久，手表这类低配设备建议用 15 帧。</div>
 <div class="msec">开屏图标</div>
 <div class="mlist" id="spiRows"><button class="mrow lit" data-v="ring"><img class="spith" alt="" draggable="false"><span class="mt">图二 · 黄圈镜头<small class="zsd">镜头外圈带黄色描边（默认）</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button><button class="mrow lit" data-v="plain"><img class="spith" alt="" draggable="false"><span class="mt">图三 · 素色镜头<small class="zsd">镜头外圈无黄色描边</small></span><svg class="zck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button></div>
 <div class="msec">霍金内核（纯视觉绘制）</div>
@@ -2143,15 +2153,19 @@ input[type=range].lgp::-moz-range-thumb{transform:scale(1.62,1.46);background:rg
     <div class="mpage" id="pAbout">
       <div class="mhead"><button class="round glass mback" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button><div class="mtitle">关于澄影</div><span></span></div>
       <div class="mscroll" id="ascroll"><div class="minner"><div class="mabout">
-        <div class="logo" id="aboutLogo"></div>
+        <div class="logo" id="aboutLogo"><img alt="澄影" draggable="false" src="data:image/jpeg;base64,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"></div>
         <h3>澄影</h3>
-        <div class="ver">LUCIDA · 版本 4.1.0</div>
-        <div class="msec">关于软件</div>
-        <p>澄影是一款以液态玻璃为设计语言的相机：0.5×–30× 连续变焦转盘，720p / 1080p / 4K，24 / 30 / 60 帧，片门全开与多种宽高比，拍照、录像一体。</p>
-        <div class="msec">关于网站</div>
-        <p>澄影以网页形式运行，用浏览器即可打开使用，也可以添加到主屏幕，像 App 一样全屏使用。所有照片与视频只保存在你的设备上。</p>
-        <div class="msec">关于摄影风格</div>
-        <p>摄影风格内置 13 个预设（心情：自然、温馨、安静、缥缈、反差色、耀目、鲜明；底色：标准、珠光、冷调玫瑰色、琥珀色、金色、玫瑰金色），在取景框里左右滑动切换。调色盘横向调颜色浓淡、纵向调画面明暗，底部滑条控制风格强度；顺序可在“更多设置”中调整。调色实时作用于取景预览和拍摄的照片；视频调色暂未支持。</p>
+        <div class="ver" id="aboutVer">LUCIDA · 版本</div>
+        <div class="msec">澄影是什么</div>
+        <p>澄影是一台把「取景器」放在最中间的相机：整套界面用液态玻璃做成，变焦转盘从 0.5× 一路连续拉到 100×，换镜头像苹果相机一样不黑屏；拍照、录像、实况、360° 全景和相册编辑都在同一个页面里完成，不用来回切应用。</p>
+        <div class="msec">拍摄</div>
+        <p>分辨率 720p / 1080p / 4K，帧率 24 / 30 / 60，另有片门全开和多种宽高比；点一下画面对焦，长按锁定曝光与对焦（iPhone 原生 App 里由系统直接对焦，网页版取决于浏览器是否开放）。实况可以选 3 / 5 / 6 / 8 秒，拍的时候时间和「合成中」会显示在灵动岛里。全景用陀螺仪定位，对准圆圈自动拍，拍完拼成可拖动查看的球面全景。</p>
+        <div class="msec">调色与风格</div>
+        <p>摄影风格内置 13 个预设，在取景框里左右滑动切换；调色盘横向调颜色浓淡、纵向调画面明暗，底部滑条控制强度，还有电影档、滤镜和 LUT 导入。调色现在同时作用于取景预览、照片、视频和实况，并且会替你留一份未调色的原片，相册里随时可以「还原原色」。</p>
+        <div class="msec">相册与编辑</div>
+        <p>拍好的内容先进入澄影自己的相册，可以继续调色、加水印、打马赛克，也能用 AI 做扩图和删除；之后再决定保存到系统相册或导出文件。iPhone 原生 App 能直接把照片、视频和真正的实况照片写入系统相册，并支持 HEIF 与 ProRAW 拍照。</p>
+        <div class="msec">运行方式与隐私</div>
+        <p>手机版和手表版是网页，用浏览器打开即可，也可以添加到主屏幕全屏使用；iOS 原生版把同一套界面装进原生外壳。照片和视频默认只保存在你的设备上，只有你主动用 AI 扩图这类联网功能时，相关图片才会发给你自己配置的服务。</p>
         <div class="msec">开发者</div>
         <div class="devcard"><div class="devav"><img src="data:image/jpeg;base64,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" alt="雾峥奕"></div><div class="devtx"><b>雾峥奕</b><small>DEVELOPER · 澄影开发者</small></div></div>
               </div></div></div>
@@ -2260,6 +2274,7 @@ input[type=range].lgp::-moz-range-thumb{transform:scale(1.62,1.46);background:rg
     </div>
   </section>
   <section class="pnp" id="pnCap">
+    <video id="pnVid" playsinline muted autoplay></video>
     <canvas id="pnCam"></canvas>
     <canvas id="pnHud"></canvas>
     <div class="pnhud"><span class="p1" id="pnP1"></span><span class="p2" id="pnP2"></span></div>
@@ -2426,7 +2441,39 @@ function pillState(){
   b.style.display=(S.facing==='user'||S.uw==='off')?'none':'';
   b.classList.toggle('dim',S.live&&!S.canUW&&S.facing!=='user');
 }
-function firstFrame(v){return new Promise(r=>{let d=false;const f=()=>{if(!d){d=true;r()}};if(v.requestVideoFrameCallback)v.requestVideoFrameCallback(f);setTimeout(f,900)})}
+/* 等新镜头流真正出画：画面尺寸有了、连续两次读到的尺寸一样、并且至少来了 2 帧才算好；最多等 4 秒。
+   以前只等 0.9 秒就硬切——4K / 原比例这类格式在 iPhone 上常要 1~2 秒才出第一帧，于是新画面还没出来就被换上去，
+   四周露出黑底（切分辨率 / 帧率时「两边和上下黑屏」）。 */
+function firstFrame(v){return new Promise(r=>{
+  let done=false,n=0,lw=0,lh=0,stable=0;const t0=performance.now();
+  const fin=()=>{if(!done){done=true;r()}};
+  const chk=()=>{
+    if(done)return;
+    const w=v.videoWidth,h=v.videoHeight;
+    if(w&&h&&v.readyState>=2){if(w===lw&&h===lh)stable++;else{stable=0;lw=w;lh=h}if(stable>=1&&n>=2){fin();return}}
+    if(performance.now()-t0>4000){fin();return}
+    next()};
+  const next=()=>{if(v.requestVideoFrameCallback)v.requestVideoFrameCallback(()=>{n++;chk()});else setTimeout(()=>{n++;chk()},50)};
+  setTimeout(fin,4300);  /* 保底：摄像头不出帧也不会卡死 */
+  next();
+})}
+/* 60 帧落到实处：取景流给到的帧率比目标低（比如 720p / 4:3 原比例格式只给 30），重新协商一次 */
+async function fpsEnsure(st){
+  try{
+    if(S.android)return;const sp=S.spec;if(!sp||sp.fps<50)return;
+    const t=st&&st.getVideoTracks&&st.getVideoTracks()[0];if(!t||!t.applyConstraints)return;
+    const got=()=>{try{return t.getSettings().frameRate||0}catch(_){return 0}};
+    if(!got()||got()>=sp.fps-2)return;
+    const nap=ms=>new Promise(r=>setTimeout(r,ms));
+    const d=camDims(sp),L=Math.max(d[0],d[1]),r=Math.min(d[0],d[1])/L;
+    const tries=[{width:{ideal:d[0]},height:{ideal:d[1]},frameRate:{exact:sp.fps}}];
+    for(const l of [1280,1440,1920])if(l>L)tries.push({width:{ideal:l},height:{ideal:Math.round(l*r/2)*2},frameRate:{exact:sp.fps}});
+    let okk=false;
+    for(const c of tries){try{await t.applyConstraints(c)}catch(e){continue}await nap(200);if(got()>=sp.fps-2){okk=true;break}}
+    if(!okk){try{await t.applyConstraints({width:{ideal:d[0]},height:{ideal:d[1]},frameRate:{ideal:sp.fps}})}catch(_){}}
+    try{plog('帧率校正：目标 '+sp.fps+' → 实际 '+Math.round(got())+(okk?'':'（设备未提供）'))}catch(_){}
+  }catch(_){}
+}
 /* 取景模式：视频层（默认）或画布（演示画面 / 节能优化 30 帧 / 安卓切镜头时的冻结帧） */
 function applyPv(){
   const gm=gradeOn(),cm=gm||!S.live||S.edit||S.perf||S.snapOn||(typeof stabOn==='function'&&stabOn());S.gm=gm;S.cm=cm;
@@ -2474,12 +2521,13 @@ async function swap(facing,lens,opt={}){
     }
     if(facing!=='user'&&lens==='tele'&&!lensOK(st,'tele'))throw new Error('wrong-lens');
     const nv=V===vid?vidB:vid;
-    nv.srcObject=st;await nv.play();await firstFrame(nv);
+    nv.srcObject=st;await fpsEnsure(st);await nv.play();await firstFrame(nv);
     if(lens==='tele'&&facing!=='user'&&lens0==='main'&&S.teleSet==='auto'&&!S.teleAuto){try{calibTele(S.snap?S.snap.c:oldEl,nv)}catch(e){}}
     S.facing=facing;S.lens=lens;V=nv;S.stream=st;if(lens==='tele'){S.teleFails=0;try{plog('长焦已接入')}catch(_){}}
     if(oldStream)oldStream.getTracks().forEach(t=>t.stop());
     if(S.snapOn&&!S.gm){const fm=opt.fadeMs||340;view.style.transition='opacity '+fm+'ms ease';clearTimeout(S.vtT);S.vtT=setTimeout(()=>{view.style.transition=''},fm+120)}
     oldEl.srcObject=null;S.live=true;ok=true;S.snapOn=false;applyPv();updTransform(true);
+    try{layoutVF()}catch(_){}
     await probe();
     if(opt.report){
       const s=st.getVideoTracks()[0].getSettings(),sp=eff(),L=camDims(sp)[0],gl=Math.max(s.width||0,s.height||0),gf=Math.round(s.frameRate||0);
@@ -2727,6 +2775,10 @@ async function tryFocus(cx,cy,lock){
   const t=S.live&&S.stream&&S.stream.getVideoTracks()[0];
   let c={};try{c=t&&t.getCapabilities?t.getCapabilities():{}}catch(e){}
   const fm=c.focusMode||[];
+  if(t&&!fm.length&&window.LNB&&LNB.focus){
+    const pp=toFrame(cx,cy);let okN=false;try{okN=await LNB.focus(pp.x,pp.y,lock,t.label||'')}catch(_){}
+    if(okN){if(lock){FOC.locked=true;showRing(cx,cy,true);toast('AE/AF 已锁定，轻点画面解锁')}return}
+  }
   if(!t||!fm.length){
     $('#focus').classList.remove('lock');
     if(!FOC.warned||lock){FOC.warned=true;toast(S.live?'此浏览器不支持手动对焦，使用系统自动对焦':'演示画面无法对焦')}
@@ -2754,6 +2806,7 @@ async function tryFocus(cx,cy,lock){
 async function focusRelease(){
   const t=S.stream&&S.stream.getVideoTracks()[0];if(!t)return;
   let c={};try{c=t.getCapabilities()}catch(e){}
+  if(window.LNB&&LNB.focusRelease&&!(c.focusMode||[]).length){try{await LNB.focusRelease()}catch(_){}return}
   const adv={};if((c.focusMode||[]).includes('continuous'))adv.focusMode='continuous';if((c.exposureMode||[]).includes('continuous'))adv.exposureMode='continuous';
   try{await t.applyConstraints({advanced:[adv]})}catch(e){}
 }
@@ -3188,7 +3241,7 @@ function syncIsland(){
 }
 $('#islandList').addEventListener('click',e=>{const b=e.target.closest('.opt');if(!b)return;S.island=b.dataset.i;try{localStorage.setItem('lucida.island',S.island)}catch(_){}syncIsland()});
 $('#rowAbout').addEventListener('click',()=>goPage('about'));
-try{$('#aboutLogo').innerHTML=document.querySelector('#iconBox svg').outerHTML.replace(/id="ic-/g,'id="ab-').replace(/url\(#ic-/g,'url(#ab-')}catch(e){}
+
 function syncZspd(){document.querySelectorAll('#zspd .opt').forEach(b=>b.classList.toggle('on',+b.dataset.g===S.zspd));$('#zspdVal').textContent='1× → '+ZSPD[S.zspd]+'×'}
 $('#zspd').addEventListener('click',e=>{const b=e.target.closest('.opt');if(!b)return;S.zspd=+b.dataset.g;try{localStorage.setItem('lucida.zspd2',S.zspd)}catch(_){}updPXLN();syncZspd();toast('变焦速度：1× → '+ZSPD[S.zspd]+'×')});
 $('#rowRatio').addEventListener('click',()=>{panel.classList.remove('open');syncRatio();ratioSheet.classList.add('open')});
@@ -3294,6 +3347,9 @@ function armRec(){
 async function startRec(){
   if(S.switching){toast('镜头切换中…');return}
   const sp=eff(),A=RATIO[S.ratio],[w,h]=outDims(A);
+  /* 60 帧 / 4K 录像：先把镜头预热池收掉（同时开着三颗镜头会抢相机带宽，实际帧率被拉到 30），再确认取景流真的给到目标帧率 */
+  if((sp.fps>=50||sp.res>=2160)&&S.poolOn){try{poolTeardown()}catch(_){}}
+  try{await fpsEnsure(S.stream)}catch(_){}
   const lv=sp.res===2160?'640034':'64002a';
   const cands=[...(sp.res===2160?['video/mp4;codecs=hvc1']:[]),`video/mp4;codecs=avc1.${lv}`,'video/mp4;codecs=avc1','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
   const mt=cands.find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
@@ -3307,7 +3363,7 @@ async function startRec(){
   S.recDirect=direct;S.recFps=sp.fps;S.recN=0;S.recLast=0;S.recEl=null;S.recArmed=false;S.zLock=S.lt;S.zT=0;
   let stream,ow=w,oh=h;
   if(direct){S.recC=null;S.recCtx=null;ow=vw;oh=vh;stream=new MediaStream([tr])}
-  else{const rc=document.createElement('canvas');rc.width=w;rc.height=h;S.recC=rc;S.recCtx=rc.getContext('2d',{alpha:false});if(GRV){const rr=document.createElement('canvas');rr.width=w;rr.height=h;S.recRawC=rr;S.recRawCtx=rr.getContext('2d',{alpha:false})}pumpRec();stream=rc.captureStream()}
+  else{const rc=document.createElement('canvas');rc.width=w;rc.height=h;S.recC=rc;S.recCtx=rc.getContext('2d',{alpha:false});if(GRV){const rr=document.createElement('canvas');rr.width=w;rr.height=h;S.recRawC=rr;S.recRawCtx=rr.getContext('2d',{alpha:false})}pumpRec();stream=rc.captureStream(sp.fps)}
   S.recW=ow;S.recH=oh;
   let mic=null;try{mic=await gUM({audio:true});mic.getAudioTracks().forEach(t=>stream.addTrack(t));$('#dotO').classList.add('on')}catch(e){}
   const th=thumbOf(frameCanvas()),chunks=[];
@@ -3317,7 +3373,7 @@ async function startRec(){
   /* 带调色录像：同时再录一份未调色原片，相册里「还原原色」就是从它重新渲染 */
   let mrR=null;const chR=[],clones=[];
   if(S.recRawC){try{
-    const sr=S.recRawC.captureStream();if(mic)mic.getAudioTracks().forEach(t=>{const c=t.clone();clones.push(c);sr.addTrack(c)});
+    const sr=S.recRawC.captureStream(sp.fps);if(mic)mic.getAudioTracks().forEach(t=>{const c=t.clone();clones.push(c);sr.addTrack(c)});
     mrR=new MediaRecorder(sr,{mimeType:mt,videoBitsPerSecond:bps});mrR.ondataavailable=e=>e.data.size&&chR.push(e.data);
     S.recRawP=new Promise(res=>{mrR.onstop=()=>{clones.forEach(t=>t.stop());res(chR.length?new Blob(chR,{type:mt.split(';')[0]}):null)}});S.recMrR=mrR;
   }catch(e){mrR=null;S.recMrR=null;S.recRawP=null}}
@@ -3337,6 +3393,7 @@ async function startRec(){
 }
 function stopRec(){
   const mr=S.rec;S.rec=null;if(mr&&mr.state!=='inactive')mr.stop();
+  try{poolSchedule(1500)}catch(_){}
   app.classList.remove('recording');$('#island').classList.remove('rec');click();
   try{if(S.recMrR&&S.recMrR.state!=='inactive')S.recMrR.stop()}catch(_){}
   const sec=(performance.now()-S.recStart)/1000;
@@ -3404,13 +3461,29 @@ function loop(t){
 }
 
 /* ===== v3.3.4：镜头检测 / 长焦切换 / 变焦放大取景框 / 版本更新 ===== */
-const APP_VER='11.1.1';
+const APP_VER='11.1.3';
+try{const av=$('#aboutVer');if(av)av.textContent='LUCIDA · 版本 '+APP_VER+(window.LUCIDA_WATCH?' · 手表版':'')}catch(e){}
 const UPDATES=[
+ {v:'11.1.3',d:'2026年11月8日',items:[
+  '<b>实况时长可选：</b>更多设置 → 实况时长，3 / 5 / 6 / 8 秒（默认 3 秒）。快门前固定记录 1.5 秒，其余时间在快门后继续记录；存进系统相册的静帧点也跟着对到按下快门的那一刻。手机版、手表版、iOS 原生版都有。',
+  '<b>实况提示进灵动岛：</b>原来的「实况 x / 3.0 秒」弹窗去掉了，拍的时候灵动岛里显示「实况 1.5/3.0s」，合成时显示「实况 合成中…」，完成后短暂显示「实况 已保存」；只有设置里选了「无灵动岛」才用弹窗显示。三个版本一致。',
+  '<b>实况更清晰、不再闪退：</b>改成流式合成——快门后每来一帧就逐帧套色、立刻送进硬件编码器，内存只和快门前那 1.5 秒有关，和总时长无关；以前套调色盘时每一帧新建一块画布、全部同时存活，内存翻倍，iPhone 上就会闪退。画面长边由 720 提到最高 1080（60 帧自动略降）。没有 WebCodecs 的老设备退回整段留内存的方式，但分辨率按总帧数自动降、调色也改成逐帧复用一块画布。',
+  '<b>手表版实况优化：</b>默认 15 帧；取样一帧要花的时间超过间隔的 75% 时自动隔帧取样，保住取景流畅（编码时按时间补帧，总时长不变）；画面长边上限 640；加上可选的 5 / 6 / 8 秒时长。',
+  '<b>全景取景又清晰又流畅：</b>取景改用系统视频层（GPU 合成、设备原生分辨率），不再每帧把整张 4K / 片门全开的画面 drawImage 进一块被压成 1.25 倍像素的画布——那正是「又糊又卡、只有几帧」的原因；画布只画提示圈和进度。取景自动用 1920 档（全景成片最宽 4096～8192 像素，用不到 4K 取景），结束后恢复你原来的规格；拍之前收掉三颗镜头同时预热，结束后再重建。',
+  '<b>切分辨率 / 帧率不再黑屏：</b>等新镜头流「画面尺寸稳定、并来了几帧」才切换（最多等 4 秒），以前只等 0.9 秒，4K / 原比例格式在 iPhone 上出第一帧常要 1～2 秒，所以四周露出黑底；切换完成后还会重新排版取景框。',
+  '<b>60 帧落到实处：</b>取景流给到的帧率低于目标（例如 720p 原比例格式只给 30）时重新协商，必要时改用能给到 60 帧的更高一档；录像开始前收掉镜头预热池（同时开着三颗镜头会抢带宽，把实际帧率拉到 30），画布录制显式带上目标帧率。实际能不能到 60 帧取决于机型和系统，录完会显示实录平均帧率。',
+  '<b>录像时可对焦（原生 App）：</b>iPhone 的网页取景没有对焦接口，所以点一下画面会提示「此浏览器不支持手动对焦」；原生壳里新增原生对焦，点按对焦、长按锁定 AE/AF，录像中也能用。原生拍完照后会把摄像头的变焦倍数还原，避免拍过 ProRAW 之后取景被二次放大发糊。',
+  '<b>关于页重写：</b>换成新的镜头图标，全部文案重写，版本号跟随当前版本；去掉了「视频调色暂未支持」这类过时说法。App 图标改用你给的图，等比缩放进 1024 方形，不裁切。',
+ ]},
+ {v:'11.1.2',d:'2026年11月8日',items:[
+  '<b>全景画质：</b>单张截帧的分辨率上限从 2048 提到 2880（「片门全开」时到 3600），降采样门槛从拍够 50/100 张延后到 150/300 张，绝大多数全景不会再被压小，直接用取景分辨率截帧；JPEG 质量从 90% 提到 93%。',
+  '<b>原生液态玻璃整体去掉：</b>按反馈删除了 iOS 原生壳里「用系统 UIGlassEffect 画玻璃」这条通路（需要 Xcode 26 才能编译，而且这次还出现过关闭面板也被画成玻璃块的问题），现在原生 App 和网页一样，只用网页自带的玻璃样式。更多设置里的「原生液态玻璃」开关也一并去掉。',
+ ]},
  {v:'11.1.1',d:'2026年11月7日',items:[
   '<b>修复原生液态玻璃叠层把关闭的面板也显示出来：</b>设置面板、宽高比面板、功能面板、弹窗等平时是用透明度 0 隐藏的（不是 display:none），原生玻璃叠层之前没有检查这一点，把这些「关着」的面板也当成要显示的玻璃块糊在画面上，导致看起来有好几块毛玻璃叠在一起挡住取景。现在只有真正展开的面板才会叠玻璃。',
  ]},
  {v:'11.1.0',d:'2026年11月7日',items:[
-  '<b>苹果原生 App：</b>照片 / 实况 / 视频可以直接保存进系统相册（更多设置 → 苹果原生，默认先存澄影相册）；实况用系统接口写成真正的实况照片；相册导入走系统选择器，实况连视频一起导入，编辑后仍可存成实况；规格面板新增照片格式 JPEG / HEIF / ProRAW；打开时检测摄像头并马上预热；iOS 26 上用系统原生液态玻璃。',
+  '<b>苹果原生 App：</b>照片 / 实况 / 视频可以直接保存进系统相册（更多设置 → 苹果原生，默认先存澄影相册）；实况用系统接口写成真正的实况照片；相册导入走系统选择器，实况连视频一起导入，编辑后仍可存成实况；规格面板新增照片格式 JPEG / HEIF / ProRAW；打开时检测摄像头并马上预热。',
   '<b>360° 全景连续拍摄：</b>点快门后立刻就能再拍下一张，不用等上一张保存完；按住快门每 0.2 秒左右连拍一张。JPEG 压缩改到后台排队，覆盖地图和缩略图条只增量更新，张数多了也不会越拍越慢。自动模式冷却从 0.7 秒缩短到 0.12 秒。',
  ]},
  {v:'11.0.9',d:'2026年11月6日',items:[
@@ -4096,7 +4169,7 @@ async function swap24(facing,lens,opt={}){
       st=await openStream(facing,lens);
     }
     const nv=V===vid?vidB:vid;
-    nv.srcObject=st;await nv.play();await firstFrame(nv);
+    nv.srcObject=st;await fpsEnsure(st);await nv.play();await firstFrame(nv);
     if(opt.hold){ /* 预切：等变焦到达目标倍数再交接；中途变卦、或超过 1.8 秒就放弃，旧画面不受影响 */
       const t0=performance.now();let go=false;
       while(performance.now()-t0<1800){if(opt.hold()){go=true;break}if(opt.cancel&&opt.cancel())break;await new Promise(r=>setTimeout(r,25))}
@@ -4106,6 +4179,7 @@ async function swap24(facing,lens,opt={}){
     S.facing=facing;S.lens=lens;V=nv;S.stream=st;
     if(oldStream)oldStream.getTracks().forEach(t=>t.stop());
     oldEl.srcObject=null;S.live=true;ok=true;S.snapOn=false;applyPv();updTransform(true);
+    try{layoutVF()}catch(_){}
     await probe();
     if(opt.report){
       const s=st.getVideoTracks()[0].getSettings(),sp=eff(),L=camDims(sp)[0],gl=Math.max(s.width||0,s.height||0),gf=Math.round(s.frameRate||0);
@@ -4931,7 +5005,7 @@ function inShot(R,w,h,fov,d){const zc=R[2]*d[0]+R[5]*d[1]+R[8]*d[2];if(zc>=-1e-6
   const ix=(R[0]*d[0]+R[3]*d[1]+R[6]*d[2])/(-zc)/tx,iy=(R[1]*d[0]+R[4]*d[1]+R[7]*d[2])/(-zc)/ty;return ix>-1&&ix<1&&iy>-1&&iy<1}
 function sizeCanvas(c){const d=Math.min(devicePixelRatio||1,2),w=Math.round(c.clientWidth*d),h=Math.round(c.clientHeight*d);if(c.width!==w||c.height!==h){c.width=w;c.height=h}return d}
 
-function sizeCanvasQ(c){const d=Math.min(devicePixelRatio||1,1.25),w=Math.round(c.clientWidth*d),h=Math.round(c.clientHeight*d);if(c.width!==w||c.height!==h){c.width=w;c.height=h}return d}
+function sizeCanvasQ(c){const d=Math.min(devicePixelRatio||1,CAP.pv?2:1.5),w=Math.round(c.clientWidth*d),h=Math.round(c.clientHeight*d);if(c.width!==w||c.height!==h){c.width=w;c.height=h}return d}
 function mapPaint(g,W,H,cs,list){
   g.fillStyle='rgba(48,209,88,.55)';
   for(let y=0;y<H;y+=cs)for(let xx=0;xx<W;xx+=cs){
@@ -4972,7 +5046,7 @@ function capShot(forcedTarget){
   if(CAP.mode==='gyro'){R=curR();if(!R){T('还没有读到陀螺仪数据');return}
     if(ti==null){const f=fwd(R);let best=-1,bd=1e9;CAP.targets.forEach((t,i)=>{if(t.done!=null)return;const a=Math.acos(Math.max(-1,Math.min(1,f[0]*t.d[0]+f[1]*t.d[1]+f[2]*t.d[2])));if(a<bd){bd=a;best=i}});ti=bd<22*D2R?best:null}}
   else{if(ti==null)ti=CAP.targets.findIndex(t=>t.done==null);if(ti<0){T('所有方向都拍完了，点「完成」');return}const t=CAP.targets[ti];R=poseR(t.yaw,t.pitch)}
-  const n=CAP.shots.length+(CAP.pend||0),lim=(n>100?1280:n>50?1600:CAP.gate?2560:2048),k=Math.min(1,lim/Math.max(v.videoWidth,v.videoHeight)),w=Math.round(v.videoWidth*k),h=Math.round(v.videoHeight*k),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(v,0,0,w,h);
+  const n=CAP.shots.length+(CAP.pend||0),lim=(n>300?1600:n>150?2048:CAP.gate?3600:2880),k=Math.min(1,lim/Math.max(v.videoWidth,v.videoHeight)),w=Math.round(v.videoWidth*k),h=Math.round(v.videoHeight*k),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(v,0,0,w,h);
   const tc=document.createElement('canvas');tc.width=Math.round(w/h>1?66:44);tc.height=Math.round(tc.width*h/w);tc.getContext('2d').drawImage(c,0,0,tc.width,tc.height);
   CAP.flash=1;try{navigator.vibrate&&navigator.vibrate(18)}catch(_){}
   /* 立刻算「已拍」：下一张马上可以拍；JPEG 在后台排队编码 */
@@ -4986,7 +5060,7 @@ function capShot(forcedTarget){
 const capQ=[];let capRun=0;
 function capEnc(c){return new Promise(res=>{capQ.push({c,res});capPump()})}
 function capPump(){while(capRun<2&&capQ.length){const j=capQ.shift();capRun++;
-  try{j.c.toBlob(b=>{capRun--;j.res(b);capPump()},'image/jpeg',.9)}catch(e){capRun--;j.res(null)}}}
+  try{j.c.toBlob(b=>{capRun--;j.res(b);capPump()},'image/jpeg',.93)}catch(e){capRun--;j.res(null)}}}
 
 function capNeedDraw(v,W,H){
   if(!CAP.rvT&&v.requestVideoFrameCallback){const tok=CAP.rvT={};const cb=()=>{if(CAP.rvT!==tok)return;if(!CAP.on){CAP.rvT=null;return}CAP.nf=1;v.requestVideoFrameCallback(cb)};v.requestVideoFrameCallback(cb)}
@@ -4997,7 +5071,8 @@ function capFrame(t){
   const cam=CAP.cam,hud=CAP.hud;if(!CAP.d||(CAP.fr||0)%15===0){sizeCanvasQ(cam);CAP.d=sizeCanvasQ(hud)}const d=CAP.d,W=cam.width,H=cam.height,cx=CAP.cx||(CAP.cx=cam.getContext('2d',{alpha:false})),hx=CAP.hx||(CAP.hx=hud.getContext('2d'));
   const v=V,vw=v&&v.videoWidth,vh=v&&v.videoHeight;
   let s=1,ox=0,oy=0;
-  if(vw){s=Math.max(W/vw,H/vh);ox=(W-vw*s)/2;oy=(H-vh*s)/2;if(capNeedDraw(v,W,H)){cx.fillStyle='#000';cx.fillRect(0,0,W,H);cx.drawImage(v,ox,oy,vw*s,vh*s)}}else{cx.fillStyle='#000';cx.fillRect(0,0,W,H)}
+  if(CAP.pv&&(CAP.fr||0)%30===0)pnVidSync();
+  if(vw){s=Math.max(W/vw,H/vh);ox=(W-vw*s)/2;oy=(H-vh*s)/2;if(!CAP.pv&&capNeedDraw(v,W,H)){cx.fillStyle='#000';cx.fillRect(0,0,W,H);cx.imageSmoothingQuality='high';cx.drawImage(v,ox,oy,vw*s,vh*s)}}else if(!CAP.pv){cx.fillStyle='#000';cx.fillRect(0,0,W,H)}
   hx.clearRect(0,0,W,H);
   const R=CAP.mode==='gyro'?curR():null;
   if(R&&CAP.prevF){const f=fwd(R),a=Math.acos(Math.max(-1,Math.min(1,f[0]*CAP.prevF[0]+f[1]*CAP.prevF[1]+f[2]*CAP.prevF[2])))/D2R;CAP.omega=CAP.omega*.7+(dt>0?a/dt:0)*.3}
@@ -5067,8 +5142,9 @@ async function capStart(){
     if(bad){const b2=await prepCamera('main');if(b2){Sensor.stop();await alertDlg('现在不能拍摄','<p>'+esc(b2)+'</p>');return}v.fov=65;T('没能切到超广角，已改用 1× 主摄（视角 65°）')}
     else{const k=+localStorage.getItem('lucida.pano.fovUW');v.fov=k>=60&&k<=150?k:v.fov}
   }else if(v.lens==='main'||v.lens==='uw'){const bad=await prepCamera(v.lens);if(bad){Sensor.stop();await alertDlg('现在不能拍摄','<p>'+esc(bad)+'</p>');return}}
-  CAP.gate=false;if(v.gate)CAP.gate=await gateOpen();
-  if(!CAP.gate)await fpsBoost();
+  CAP.gate=false;try{poolTeardown()}catch(_){}   /* 全景拍摄期间不留三颗镜头同时待命，免得抢带宽 */
+  if(v.gate)CAP.gate=await gateOpen();
+  if(!CAP.gate){await panoProfile();await fpsBoost()}
   CAP.fov=Math.max(20,Math.min(150,v.fov));try{localStorage.setItem('lucida.pano.fov',CAP.fov)}catch(_){}
   const ok=await CAP.sensorP;
   CAP.afov=v.afov;CAP.mode=ok?'gyro':'manual';CAP.auto=v.auto;CAP.keep=v.keep;
@@ -5076,10 +5152,58 @@ async function capStart(){
   CAP.targets=buildTargets(CAP.fov,v.dens);CAP.shots.forEach(s=>URL.revokeObjectURL(s.thumbUrl));CAP.shots=[];CAP.mapBase=null;CAP.prevF=null;CAP.omega=0;CAP.cool=.8;CAP.steady=0;CAP.t0=Date.now();
   if(ok)CAP.yaw0=lonOf(Sensor.R);
   if(window.ENT&&ENT.consume('pano'))setTimeout(()=>ENT.hint('pano','全景拍摄'),700);
-  CAP.on=true;showPage('pnCap');updateUI();CAP.prevT=0;CAP.raf=requestAnimationFrame(capFrame)}
+  CAP.on=true;showPage('pnCap');updateUI();await pnVidStart();CAP.prevT=0;CAP.raf=requestAnimationFrame(capFrame)}
+/* ===== 11.1.3 全景取景：系统视频层 + 1920 档取景 =====
+   以前：取景是「每帧把整张视频画面 drawImage 进一块被限成 1.25 倍像素的画布」。
+         4K / 片门全开 / 60 帧时，每帧要搬运上千万像素再缩小到几十万像素 → 又糊（缩得太狠、像素比被压低）又卡（几帧）。
+   现在：1) 取景直接用一个 <video>（系统视频层，GPU 合成，设备原生分辨率，不占 JS）；画布只画「提示圈 / 进度」。
+         2) 非「片门全开」时，取景自动用 1920 档（全景成片最宽 4096~8192 像素，1920 档取景已经 >20 像素/度，用不到 4K；
+            4K 只会让相机降帧率、每次截图更慢），结束后恢复原来的规格。
+         3) 开拍前把镜头预热池收掉（同时开着三颗镜头会抢带宽），结束后再重建。
+   片门全开仍然给你整幅最大分辨率（那是你主动要的），但取景也走视频层，不再因为 4032×3024 的画布搬运而卡。 */
+let PV_PREV=null;
+function pnVidSync(){const el=$p('#pnVid');if(!el||!CAP.pv)return;const st=S.stream;if(st&&el.srcObject!==st){el.srcObject=st;try{el.play&&el.play().catch(()=>{})}catch(_){}}}
+async function pnVidStart(){
+  CAP.pv=false;const el=$p('#pnVid'),pg=$p('#pnCap');if(!el||!pg)return;
+  try{
+    if(!S.stream)return;
+    el.muted=true;el.playsInline=true;el.setAttribute('playsinline','');el.srcObject=S.stream;
+    await Promise.race([el.play(),sleep(1500)]);
+    for(let i=0;i<30&&!(el.videoWidth&&el.videoHeight);i++)await sleep(50);
+    if(el.videoWidth&&el.videoHeight){CAP.pv=true;pg.classList.add('vid')}
+  }catch(e){CAP.pv=false}
+  if(!CAP.pv){try{el.srcObject=null}catch(_){}}
+}
+function pnVidStop(){
+  const el=$p('#pnVid'),pg=$p('#pnCap');CAP.pv=false;if(pg)pg.classList.remove('vid');
+  if(el){try{el.pause();el.srcObject=null}catch(_){}}
+}
+/* 取景自动降到 1920 档（只在当前取景长边 > 2100 时；已经是 1080p / 720p 就不动） */
+async function panoProfile(){
+  PV_PREV=null;
+  try{
+    const t=S.stream&&S.stream.getVideoTracks()[0];if(!t||!t.applyConstraints)return;
+    const vw=V.videoWidth||0,vh=V.videoHeight||0,L=Math.max(vw,vh);
+    if(!L||L<=2100)return;
+    const r=Math.min(vw,vh)/L,h=Math.round(1920*r/2)*2;
+    PV_PREV=true;
+    await t.applyConstraints({width:{ideal:1920},height:{ideal:h}});
+    for(let i=0;i<30;i++){await sleep(100);const nl=Math.max(V.videoWidth||0,V.videoHeight||0);if(nl&&nl<=2100)break}
+    const nl=Math.max(V.videoWidth||0,V.videoHeight||0);
+    if(nl&&nl<L){T('全景取景已用 '+V.videoWidth+'×'+V.videoHeight+'（成片用不到 4K 取景，这样更清晰更流畅）')}else PV_PREV=null;
+  }catch(e){PV_PREV=null}
+}
+async function panoRestore(){
+  if(!PV_PREV)return;PV_PREV=null;
+  try{
+    const t=S.stream&&S.stream.getVideoTracks()[0];if(!t||!t.applyConstraints)return;
+    const sp=S.spec,d=(S.og?RES_OG:RES)[sp.res];
+    await t.applyConstraints({width:{ideal:d[0]},height:{ideal:d[1]},frameRate:{ideal:sp.fps}});
+  }catch(_){}
+}
 /* 片门全开：把当前取景轨道改成传感器整幅 4:3 最大分辨率；结束时恢复 */
 let GATE_PREV=null,FPS_PREV=null;
-async function fpsBoost(){try{const t=S.stream&&S.stream.getVideoTracks()[0];if(!t||!t.applyConstraints)return;const st=t.getSettings();FPS_PREV=st.frameRate||null;if(!st.frameRate||st.frameRate<58)await t.applyConstraints({frameRate:{ideal:60}})}catch(_){}}
+async function fpsBoost(){try{const t=S.stream&&S.stream.getVideoTracks()[0];if(!t||!t.applyConstraints)return;const st=t.getSettings();FPS_PREV=st.frameRate||null;if(Math.max(V.videoWidth||0,V.videoHeight||0)<=2100&&(!st.frameRate||st.frameRate<58))await t.applyConstraints({frameRate:{ideal:60}})}catch(_){}}
 async function fpsRestore(){try{const t=S.stream&&S.stream.getVideoTracks()[0];if(t&&t.applyConstraints&&FPS_PREV)await t.applyConstraints({frameRate:{ideal:FPS_PREV}})}catch(_){}FPS_PREV=null}
 async function gateOpen(){
   try{
@@ -5099,7 +5223,7 @@ async function gateClose(){
   try{const t=S.stream&&S.stream.getVideoTracks()[0];if(t&&GATE_PREV&&t.applyConstraints)await t.applyConstraints({width:{ideal:GATE_PREV.width},height:{ideal:GATE_PREV.height}})}catch(_){}
   GATE_PREV=null;
 }
-function capStop(){CAP.pend=0;capQ.length=0;fpsRestore();gateClose();CAP.rvT=null;CAP.d=0;CAP.on=false;cancelAnimationFrame(CAP.raf);Sensor.stop();CAP.shots.forEach(s=>URL.revokeObjectURL(s.thumbUrl));CAP.shots=[];showPage('pnList');refreshList()}
+function capStop(){CAP.pend=0;capQ.length=0;fpsRestore();gateClose();pnVidStop();panoRestore();try{poolSchedule(1500)}catch(_){}CAP.rvT=null;CAP.d=0;CAP.on=false;cancelAnimationFrame(CAP.raf);Sensor.stop();CAP.shots.forEach(s=>URL.revokeObjectURL(s.thumbUrl));CAP.shots=[];showPage('pnList');refreshList()}
 $p('#pnShoot').onclick=capStart;
 (()=>{const b=$p('#pnShut');let tm=0,held=0;
   const stop=()=>{clearTimeout(tm);clearInterval(tm);tm=0};
@@ -5121,7 +5245,7 @@ $p('#pnCDone').onclick=async()=>{
   catch(e){prog.close();if(/已取消/.test(e.message)){CAP.on=true;showPage('pnCap');CAP.prevT=0;CAP.raf=requestAnimationFrame(capFrame);if(CAP.mode==='gyro')Sensor.start();return}
     const v=await dlg({title:'拼接失败',html:stitchErrHtml(e)+'<p>照片还在，可以重试。</p>',buttons:[{t:'放弃',v:false},{t:'重试',v:true,cls:'y'}]});
     if(v){CAP.on=true;showPage('pnCap');CAP.prevT=0;CAP.raf=requestAnimationFrame(capFrame);if(CAP.mode==='gyro')Sensor.start()}else capStop();return}
-  prog.close();gateClose();
+  prog.close();gateClose();pnVidStop();panoRestore();
   const originals=keep?await Promise.all(shots.map(async s=>({data:new Uint8Array(await s.blob.arrayBuffer()),w:s.w,h:s.h,R:s.R,fov}))):[];
   const miss=CAP.targets.length-CAP.targets.filter(t=>t.done!=null).length;
   const id=await previewAndSave({title:'拼接完成',name:N.defName(),pano:r.pano,ext:'jpg',w:r.w,h:r.h,thumb:r.thumb,source:'camera',coverage:r.coverage,
@@ -5328,14 +5452,24 @@ const Mp4Mux=(()=>{
    · 纯网页里：浏览器没有任何接口能直接写入系统「实况照片」，只能把照片和短视频分享 / 保存为两个文件。 */
 const LIVE_SVG=on=>'<svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="17" cy="17" r="14.2" stroke-width="2.3" stroke-dasharray="0.01 3.12"/>'+(on?'<circle cx="17" cy="17" r="9.2" stroke-width="2.6"/><circle cx="17" cy="17" r="3.6" fill="currentColor" stroke="none"/>':'<circle cx="17" cy="17" r="9.2" stroke-width="1.9"/><path d="M5.5 29.5 28.5 4.5" stroke-width="2.6"/>')+'</svg>';
 const LP=window.LP=(()=>{
-  const o={on:false,buf:[],caps:[],timer:0,PRE:1500,POST:1500,FPS:30,LONG:720};
-  try{o.on=localStorage.getItem('lucida.live')==='1';const f=+localStorage.getItem('lucida.liveFps');if(f===15||f===30||f===60)o.FPS=f}catch(_){}
-  o.LONG=o.FPS>=60?540:720;
+  const o={on:false,buf:[],caps:[],timer:0,PRE:1500,POST:1500,FPS:window.LUCIDA_WATCH?15:30,LONG:720,DUR:3,free:[],wc:null,busy:0};
+  try{o.on=localStorage.getItem('lucida.live')==='1';const f=+localStorage.getItem('lucida.liveFps');if(f===15||f===30||f===60)o.FPS=f;
+    const d=+localStorage.getItem('lucida.liveDur');if(d===3||d===5||d===6||d===8)o.DUR=d}catch(_){}
+  o.POST=o.DUR*1000-o.PRE;   /* 快门前固定 1.5 秒，其余时间在快门后；总时长 = DUR 秒 */
   return o;
 })();
 (function(){
   const btn=$('#btnLive');
-  function lpDims(){const A=RATIO[S.ratio],[w,h]=outDims(A),k=Math.min(1,LP.LONG/Math.max(w,h));return[Math.max(2,Math.round(w*k)&~1),Math.max(2,Math.round(h*k)&~1)]}
+  function lpBudget(){
+    const wt=!!window.LUCIDA_WATCH,wc=!!LP.wc;
+    const B=wt?(wc?14e6:12e6):(wc?44e6:36e6);   /* 像素 × 帧数 的预算 ≈ 画布内存（×4 字节） */
+    const frames=(wc?LP.PRE/1000*LP.FPS:(LP.PRE+LP.POST)/1000*LP.FPS)+6;
+    return{px:B/frames,capL:wt?640:1080};
+  }
+  function lpDims(){
+    const A=RATIO[S.ratio],[w,h]=outDims(A),bd=lpBudget(),lg=Math.max(w,h);
+    const k=Math.min(1,bd.capL/lg,Math.sqrt(bd.px/(w*h)));
+    return[Math.max(2,Math.round(w*k)&~1),Math.max(2,Math.round(h*k)&~1)]}
   function supported(){return !!(window.MediaRecorder&&HTMLCanvasElement.prototype.captureStream)}
   function sync(){btn.classList.toggle('on',LP.on);btn.setAttribute('aria-pressed',LP.on?'true':'false');app.classList.toggle('livepic',LP.on)}
   function sample(){
@@ -5343,30 +5477,32 @@ const LP=window.LP=(()=>{
     const now=performance.now(),[w,h]=lpDims();
     let f=null;
     while(LP.buf.length&&now-LP.buf[0].t>LP.PRE+250){const o=LP.buf.shift();if(!o.refs&&o.c.width===w&&o.c.height===h&&!f)f=o}
+    if(!f){while(LP.free.length){const q=LP.free.pop();if(q.c.width===w&&q.c.height===h){f=q;break}}}
     if(!f)f={c:document.createElement('canvas'),refs:0};
     if(f.c.width!==w||f.c.height!==h){f.c.width=w;f.c.height=h}f.t=now; /* 尺寸不变就不重设（重设会清空并重新分配画布） */
     const t1=performance.now();
     try{renderTo(f.c.getContext('2d'),w,h)}catch(_){return}
     LP.buf.push(f);LP.cost=(LP.cost||0)*.85+(performance.now()-t1)*.15;
-    for(const cp of LP.caps){if(now-cp.t0<=LP.POST){f.refs++;cp.post.push(f)}}
+    {const iv0=1000/LP.FPS;LP.skip=LP.cost>iv0*.75?2:(LP.cost<iv0*.35?1:(LP.skip||1))}   /* 取样一帧要花的时间 > 间隔的 75%（低配手表）→ 隔帧取样，编码时按时间补帧，总时长不变 */
+    for(const cp of LP.caps){if(now-cp.t0<=LP.POST){f.refs++;if(cp.stream){cp.q.push(f);pumpCap(cp)}else cp.post.push(f)}}
   }
   /* 取样时机：优先跟着摄像头「每来一帧」取一次（requestVideoFrameCallback），不会重复取同一帧、也不会漏帧，
      画面节奏均匀；不支持时退回 requestAnimationFrame。 */
   let rafId=0,lastS=0,vfcEl=null,vfcOn=false,lastV=0;
   function start(){clearInterval(LP.timer);LP.timer=0;cancelAnimationFrame(rafId);rafId=0;vfcOn=false;vfcEl=null;if(!LP.on)return;lastS=0;
-    const take=t=>{const iv=1000/LP.FPS;if(!lastS||t-lastS>=iv*.78){lastS=lastS&&t-lastS<iv*2?lastS+iv:t;sample()}};
+    const take=t=>{const iv=1000/LP.FPS*(LP.skip||1);if(!lastS||t-lastS>=iv*.78){lastS=lastS&&t-lastS<iv*2?lastS+iv:t;sample()}};
     const arm=()=>{const el=(typeof V!=='undefined')?V:null;if(!LP.on||!el||!el.requestVideoFrameCallback||(vfcEl===el&&vfcOn))return;vfcEl=el;vfcOn=true;
       el.requestVideoFrameCallback(()=>{vfcOn=false;if(!LP.on)return;lastV=performance.now();take(lastV);arm()})};
     const loop=t=>{rafId=requestAnimationFrame(loop);if(performance.now()-lastV<250)return;if(typeof V!=='undefined'&&V!==vfcEl){vfcOn=false;arm()}take(t)}; /* 摄像头回调正常时 rAF 只做保底 */
     lastV=0;arm();rafId=requestAnimationFrame(loop)}
-  LP.setFPS=v=>{v=+v;if(v!==15&&v!==30&&v!==60)return;LP.FPS=v;LP.LONG=v>=60?540:720;LP.buf.length=0;try{localStorage.setItem('lucida.liveFps',String(v))}catch(_){}start()};
+  LP.setFPS=v=>{v=+v;if(v!==15&&v!==30&&v!==60)return;LP.FPS=v;LP.buf.length=0;LP.free.length=0;try{localStorage.setItem('lucida.liveFps',String(v))}catch(_){}start()};
   btn.addEventListener('click',()=>{
     if(S.rec){toast('录制中无法切换实况');return}
     if(S.mode!=='photo'){toast('实况在「照片」模式下使用');return}
     if(!supported()){toast('这个浏览器不支持录制实况所需的功能');return}
     LP.on=!LP.on;try{localStorage.setItem('lucida.live',LP.on?'1':'0')}catch(_){}
     if(!LP.on)LP.buf.length=0;
-    sync();start();toast(LP.on?'实况已开启：按快门会同时记录前后各 1.5 秒':'实况已关闭')
+    sync();start();toast(LP.on?'实况已开启：快门前 1.5 秒 + 快门后 '+(LP.POST/1000)+' 秒，共 '+LP.DUR+' 秒':'实况已关闭')
   });
   sync();start();
   /* 拍照：照片照常拍；开启实况时，同时收集快门前后画面，合成 3 秒视频 */
@@ -5386,46 +5522,180 @@ const LP=window.LP=(()=>{
     else{endCap(cp,true);return}
     runCap(cp);
   };
+  /* ===== 11.1.3 实况拍摄 / 合成（流式）=====
+     以前：快门后把「前 1.5 秒 + 后 1.5 秒」所有画面都留在内存里，拍完一次性套色、编码。套了调色盘时每一帧还要再新建一块画布，
+           全部同时存活，内存直接翻倍，iPhone 上就会闪退；画面也只敢存 720 像素长边，所以发糊。
+     现在：快门前只留 1.5 秒的环形缓冲；快门后每来一帧，就立刻（逐帧）套色并送进硬件编码器，用完马上放回画布池。
+           内存只和「快门前 1.5 秒」有关，和实况总时长（3 / 5 / 6 / 8 秒）无关，所以画面可以放大到 1080 像素长边，也不会闪退。
+           浏览器没有 WebCodecs（比如老安卓 / 手表）时，退回「整段留内存再编码」，但分辨率按总帧数自动降，调色也改成逐帧复用一块画布。
+     提示：灵动岛里显示「实况 x.x/总秒数s」和「实况 合成中…」；只有设置里选了「无灵动岛」才用弹窗（#lvhud）。 */
+  const rel=f=>{if(--f.refs<=0){f.refs=0;if(LP.free.length<10&&!LP.buf.includes(f))LP.free.push(f)}};
+  const totalS=()=>(LP.PRE+LP.POST)/1000;
+  let hud=null;
+  function hudEl(){if(!hud){hud=document.createElement('div');hud.id='lvhud';hud.setAttribute('aria-hidden','true');app.appendChild(hud)}return hud}
+  /* 提示：有灵动岛（iPhone 17 / 18 Pro 样式）→ 写在灵动岛里；选了「无灵动岛」→ 弹窗 */
+  function lvShow(isl,pop){
+    const i=$('#island'),t=$('#tm');
+    if(S.island!=='0'){
+      if(!S.rec){i.classList.add('rec','lv');t.textContent=isl}
+      if(hud)hud.classList.remove('on');
+    }else{
+      i.classList.remove('lv');if(!S.rec)i.classList.remove('rec');
+      const h=hudEl();h.classList.add('on');h.innerHTML='<i></i>'+pop;
+    }
+  }
+  function lvClear(){
+    const i=$('#island'),t=$('#tm');i.classList.remove('lv');if(!S.rec){i.classList.remove('rec');t.textContent='00:00'}
+    if(hud)hud.classList.remove('on');
+  }
+  let lvTimer=0,lvUntil=0,lvMsg='';
+  function lvLoop(){
+    const now=performance.now(),cp=LP.caps[LP.caps.length-1];
+    if(cp){
+      const T=totalS(),e=Math.min(T,(LP.PRE+(now-cp.t0))/1000);
+      lvShow('实况 '+e.toFixed(1)+'/'+T.toFixed(1)+'s','实况 '+e.toFixed(1)+' / '+T.toFixed(1)+' 秒');
+      btn.style.setProperty('--lp',Math.round(e/T*360)+'deg');btn.classList.add('cap');
+    }else{
+      btn.classList.remove('cap');btn.style.removeProperty('--lp');
+      if(LP.busy>0)lvShow('实况 合成中…','实况 合成中…');
+      else if(now<lvUntil)lvShow(lvMsg,lvMsg);
+      else{clearInterval(lvTimer);lvTimer=0;lvClear()}
+    }
+  }
+  function lvStart(){if(!lvTimer){lvLoop();lvTimer=setInterval(lvLoop,100)}}
+  function lvFinish(msg){lvMsg=msg;lvUntil=performance.now()+1100;lvStart()}
+
+  /* 逐帧套色：套色用一块独立的 WebGL 画布、结果画到同一块 2D 画布上反复覆盖，不再每帧新建一块 */
+  function gradeScratch(c,P){
+    try{
+      if(!P||Grade.dead)return c;
+      const g=LP._g||(LP._g=Grade.mk(document.createElement('canvas')));
+      if(!g||Math.max(c.width,c.height)>g.maxTex)return c;
+      if(!gradeDraw(g,{el:c,x:0,y:0,w:c.width,h:c.height},c.width,c.height,1,false,P))return c;
+      const o=LP._sc||(LP._sc=document.createElement('canvas'));
+      if(o.width!==c.width||o.height!==c.height){o.width=c.width;o.height=c.height}
+      o.getContext('2d').drawImage(g.canvas,0,0);return o;
+    }catch(e){return c}
+  }
+  LP.gradeScratch=gradeScratch;
+
+  /* 流式编码器：按固定帧率给每个时间格选一帧，立刻送进 VideoEncoder，不在内存里留原始画面 */
+  class StreamEnc{
+    constructor(w,h){
+      const wc=LP.wc;if(!wc)throw new Error('no webcodecs');
+      this.w=w;this.h=h;this.FPS=LP.FPS;this.k=0;this.t0=null;this.samples=[];this.avcC=null;this.err=null;this.codec=wc.codec;
+      this.maxN=Math.round(totalS()*this.FPS)+1;
+      const cfg=Object.assign({codec:wc.str,width:w,height:h,bitrate:Math.round(w*h*this.FPS*.22),framerate:this.FPS},wc.extra);
+      this.enc=new VideoEncoder({output:(ch,md)=>{
+          const d=new Uint8Array(ch.byteLength);ch.copyTo(d);
+          if(md&&md.decoderConfig&&md.decoderConfig.description&&!this.avcC){const ds=md.decoderConfig.description;
+            this.avcC=new Uint8Array(ds instanceof ArrayBuffer?ds:ds.buffer.slice(ds.byteOffset,ds.byteOffset+ds.byteLength))}
+          this.samples.push({data:d,key:ch.type==='key',ts:ch.timestamp})},error:e=>{this.err=e}});
+      this.enc.configure(cfg);
+    }
+    async push(c,t){
+      if(this.err)throw this.err;
+      if(this.t0===null)this.t0=t;
+      const iv=1000/this.FPS;
+      while(this.k<this.maxN&&this.t0+this.k*iv<=t+iv*.5){
+        const vf=new VideoFrame(c,{timestamp:Math.round(this.k*1e6/this.FPS),duration:Math.round(1e6/this.FPS)});
+        this.enc.encode(vf,{keyFrame:this.k===0||this.k%this.FPS===0});vf.close();this.k++;
+        if(this.enc.encodeQueueSize>8){let n=0;while(this.enc.encodeQueueSize>3&&!this.err&&n++<400)await new Promise(r=>setTimeout(r,5))}
+      }
+    }
+    abort(){try{this.enc.close()}catch(_){}}
+    async finish(){
+      await this.enc.flush();this.enc.close();
+      if(this.err)throw this.err;const samples=this.samples;if(samples.length<2)throw new Error('no samples');
+      if(this.codec==='avc1'&&!this.avcC)throw new Error('no avcC');
+      samples.sort((a,b)=>a.ts-b.ts);
+      const FPS=this.FPS,per=Math.round(90000/FPS);samples.forEach((s,i)=>{s.dts=i*per;s.dur=per});
+      const u8=Mp4Mux.build({codec:this.codec,w:this.w,h:this.h,samples,avcC:this.avcC}),blob=new Blob([u8],{type:'video/mp4'});
+      const dur=await new Promise((ok,no)=>{const v=document.createElement('video');v.muted=true;v.preload='metadata';const to=setTimeout(()=>no(new Error('verify timeout')),6000);
+        v.onloadedmetadata=()=>{clearTimeout(to);ok(v.duration)};v.onerror=()=>{clearTimeout(to);no(new Error('verify error'))};v.src=URL.createObjectURL(blob)});
+      const want=samples.length/FPS;
+      if(!(dur>0.5)||Math.abs(dur-want)>0.6)throw new Error('verify dur '+dur);
+      return{blob,ext:'mp4',mime:'video/mp4',dur,codec:this.codec,t0:this.t0};
+    }
+  }
+
   function startCap(){
     const now=performance.now();
     const pre=LP.buf.filter(f=>now-f.t<=LP.PRE);pre.forEach(f=>f.refs++);
-    const cp={t0:now,pre,post:[],item:null};LP.caps.push(cp);hudOn(cp);return cp;
+    const act=!!(gradeActive()||(typeof filterOn==='function'&&filterOn()));
+    const cp={t0:now,pre,post:[],item:null,stream:!!LP.wc,q:[],act,P:null,pumping:false,dead:false};
+    if(act){try{cp.P=gradeParams()}catch(_){cp.P=null}}
+    if(cp.stream){cp.q=pre.slice();cp.pre=[];cp.kick=()=>pumpCap(cp)}
+    LP.caps.push(cp);lvStart();
+    if(cp.stream)pumpCap(cp);
+    return cp;
   }
-  /* 拍摄提示：除了灵动岛里的时间，另外在灵动岛下方显示一个独立的小条 + 实况按钮上的进度圈（有的安卓机灵动岛样式不显示文字 / 被隐藏） */
-  let hud=null;
-  function hudEl(){if(!hud){hud=document.createElement('div');hud.id='lvhud';hud.setAttribute('aria-hidden','true');app.appendChild(hud)}return hud}
-  function hudOn(cp){
-    const h=hudEl();h.classList.add('on');
-    const upd=()=>{const e=Math.min(LP.PRE+LP.POST,LP.PRE+(performance.now()-cp.t0))/1000;
-      h.innerHTML='<i></i>实况 '+e.toFixed(1)+' / 3.0 秒';btn.style.setProperty('--lp',Math.round(e/3*360)+'deg');btn.classList.add('cap')};
-    upd();clearInterval(cp.hud);cp.hud=setInterval(upd,100);
+  /* 流式：队列里的帧一帧一帧（先套色，再编码）；每隔 ~10ms 让出主线程，所以取景和变焦不会被合成卡住 */
+  function pumpCap(cp){
+    if(cp.pumping)return;cp.pumping=true;
+    (async()=>{
+      try{
+        let tY=performance.now();
+        while(cp.q.length){
+          const f=cp.q.shift();
+          if(!cp.dead&&!cp.err){try{await sinkFrame(cp,f)}catch(e){cp.err=e;console.warn('实况流式编码失败',e)}}
+          rel(f);
+          if(performance.now()-tY>10){await new Promise(r=>setTimeout(r,0));tY=performance.now()}
+        }
+      }finally{cp.pumping=false}
+    })();
   }
-  function hudOff(cp,txt){clearInterval(cp.hud);if(hud){if(txt){hud.innerHTML='<i></i>'+txt;setTimeout(()=>{if(!LP.caps.length)hud.classList.remove('on')},900)}else if(!LP.caps.length)hud.classList.remove('on')}if(!LP.caps.length){btn.classList.remove('cap');btn.style.removeProperty('--lp')}}
-  function endCap(cp,drop){const i=LP.caps.indexOf(cp);if(i>=0)LP.caps.splice(i,1);hudOff(cp);if(drop){[...cp.pre,...cp.post].forEach(f=>f.refs--)}}
+  async function sinkFrame(cp,f){
+    if(!cp.se){cp.se=new StreamEnc(f.c.width,f.c.height);if(cp.act)cp.seRaw=new StreamEnc(f.c.width,f.c.height)}
+    if(f.c.width!==cp.se.w||f.c.height!==cp.se.h)return; /* 中途换了比例 / 规格：尺寸不一样的帧直接丢掉 */
+    if(cp.seRaw)await cp.seRaw.push(f.c,f.t);
+    await cp.se.push(cp.act?gradeScratch(f.c,cp.P):f.c,f.t);
+  }
+  function endCap(cp,drop){
+    const i=LP.caps.indexOf(cp);if(i>=0)LP.caps.splice(i,1);
+    if(drop){
+      cp.dead=true;
+      if(cp.stream){const q=cp.q;cp.q=[];q.forEach(rel);try{cp.se&&cp.se.abort();cp.seRaw&&cp.seRaw.abort()}catch(_){}}
+      else [...cp.pre,...cp.post].forEach(rel);
+    }
+    lvStart();
+  }
   async function runCap(cp){
-    const isl=$('#island'),tm=$('#tm');
-    isl.classList.add('rec','lv');
-    const tick=setInterval(()=>{const e=Math.min(LP.PRE+LP.POST,LP.PRE+(performance.now()-cp.t0))/1000;if(!S.rec)tm.textContent='实况 '+e.toFixed(1)+'/3.0s'},100);
     await new Promise(r=>setTimeout(r,LP.POST+120));
-    clearInterval(tick);if(!S.rec)tm.textContent='实况 处理中…';clearInterval(cp.hud);if(hud)hud.innerHTML='<i></i>实况 合成中…';
-    const frames=[...cp.pre,...cp.post].filter((f,i,a)=>a.indexOf(f)===i).sort((a,b)=>a.t-b.t);
-    endCap(cp,false);if(hud&&LP.caps.length===0)hud.classList.add('on');
+    endCap(cp,false);                       /* 不再收新帧 */
+    LP.busy=(LP.busy||0)+1;lvStart();
+    let ok=false;
     try{
-      if(frames.length<4)throw new Error('帧数不足');
-      /* 取样阶段保存的是未调色画面；有调色盘 / 滤镜时，成片逐帧套色再编码，另外把未调色的片子也留着（相册里能还原原色）*/
-      const act=!!(gradeActive()||(typeof filterOn==='function'&&filterOn()));
-      const gf=act?frames.map(f=>({c:gradeCanvas(f.c),t:f.t,refs:0})):frames;
-      const r=await encode(gf);
-      cp.item.live=Object.assign(cp.item.live,{pending:false,url:URL.createObjectURL(r.blob),ext:r.ext,mime:r.mime,dur:r.dur,err:''});
-      if(act){try{const rw=await encode(frames);cp.item.live.rawSrc={url:URL.createObjectURL(rw.blob),ext:rw.ext,mime:rw.mime,dur:rw.dur}}catch(e){console.warn('未调色实况片段保存失败',e)}}
-      cp.item.liveName=cp.item.name.replace(/\.jpg$/,'')+'.'+r.ext;
-    }catch(e){console.warn(e);cp.item.live=Object.assign(cp.item.live||{},{pending:false,url:null,ext:'',err:String(e&&e.message||e)});toast('这张的实况合成失败，已保留为普通照片')}
-    frames.forEach(f=>f.refs--);hudOff(cp,cp.item&&cp.item.live&&cp.item.live.url?'实况 已保存 · 3.0 秒':'实况 合成失败');
-    isl.classList.remove('lv');if(!S.rec){isl.classList.remove('rec');tm.textContent='00:00'}
+      let r,rw=null,still=0;
+      if(cp.stream){
+        let n=0;while((cp.q.length||cp.pumping)&&n++<1200)await new Promise(r=>setTimeout(r,25));
+        if(cp.err)throw cp.err;
+        if(!cp.se||cp.se.k<4)throw new Error('帧数不足');
+        r=await cp.se.finish();
+        if(cp.seRaw){try{rw=await cp.seRaw.finish()}catch(e){console.warn('未调色实况片段保存失败',e)}}
+        still=Math.max(0,Math.min(r.dur-.1,(cp.t0-r.t0)/1000));
+      }else{
+        const frames=[...cp.pre,...cp.post].filter((f,i,a)=>a.indexOf(f)===i).sort((a,b)=>a.t-b.t);
+        try{
+          if(frames.length<4)throw new Error('帧数不足');
+          const map=cp.act?(f=>gradeScratch(f.c,cp.P)):null;
+          r=await encode(frames,map);
+          if(cp.act){try{rw=await encode(frames)}catch(e){console.warn('未调色实况片段保存失败',e)}}
+          still=Math.max(0,Math.min(r.dur-.1,(cp.t0-frames[0].t)/1000));
+        }finally{frames.forEach(rel)}
+      }
+      cp.item.live=Object.assign(cp.item.live,{pending:false,url:URL.createObjectURL(r.blob),ext:r.ext,mime:r.mime,dur:r.dur,still,err:''});
+      if(rw)cp.item.live.rawSrc={url:URL.createObjectURL(rw.blob),ext:rw.ext,mime:rw.mime,dur:rw.dur};
+      cp.item.liveName=cp.item.name.replace(/\.jpg$/,'')+'.'+r.ext;ok=true;
+    }catch(e){
+      console.warn(e);try{cp.se&&cp.se.abort();cp.seRaw&&cp.seRaw.abort()}catch(_){}
+      cp.item.live=Object.assign(cp.item.live||{},{pending:false,url:null,ext:'',err:String(e&&e.message||e)});toast('这张的实况合成失败，已保留为普通照片');
+    }
+    LP.busy--;lvFinish(ok?'实况 已保存 · '+totalS().toFixed(1)+' 秒':'实况 合成失败');
     if($('#viewer').classList.contains('open')&&S.items[S.vi]===cp.item)showItem();
   }
   /* WebCodecs 编码 + 标准 MP4 封装：按固定 15 帧/秒重采样，总时长一定是 3 秒（安卓 MediaRecorder 的分片 MP4 会显示 0:00，且播不满） */
-  async function encodeWC(frames){
+  async function encodeWC(frames,map){
     if(!(window.VideoEncoder&&window.VideoFrame&&typeof Mp4Mux!=='undefined'))throw new Error('no webcodecs');
     const [w,h]=[frames[0].c.width,frames[0].c.height],FPS=LP.FPS,t0=frames[0].t,span=frames[frames.length-1].t-t0;
     const N=Math.max(4,Math.min(Math.round((LP.PRE+LP.POST)/1000*FPS),Math.round(span/1000*FPS)+1));
@@ -5444,7 +5714,7 @@ const LP=window.LP=(()=>{
     let j=0;
     for(let k=0;k<N;k++){
       const tk=t0+k*1000/FPS;while(j+1<frames.length&&Math.abs(frames[j+1].t-tk)<=Math.abs(frames[j].t-tk))j++; /* 取离目标时刻最近的一帧 */
-      const vf=new VideoFrame(frames[j].c,{timestamp:Math.round(k*1e6/FPS),duration:Math.round(1e6/FPS)});
+      const vf=new VideoFrame(map?map(frames[j]):frames[j].c,{timestamp:Math.round(k*1e6/FPS),duration:Math.round(1e6/FPS)});
       enc.encode(vf,{keyFrame:k===0||k%FPS===0});vf.close();
       if(err)break;
       if(enc.encodeQueueSize>6)await new Promise(r=>setTimeout(r,8)); /* 不要一次塞太多帧 */
@@ -5464,11 +5734,12 @@ const LP=window.LP=(()=>{
     if(!(dur>0.5)||Math.abs(dur-want)>0.6)throw new Error('verify dur '+dur);
     return{blob,ext:'mp4',mime:'video/mp4',dur,codec};
   }
-  async function encode(frames){
-    try{return await encodeWC(frames)}catch(e){console.warn('WebCodecs 编码不可用，改用 MediaRecorder：',e&&e.message||e)}
-    return encodeMR(frames);
+  async function encode(frames,map){
+    try{return await encodeWC(frames,map)}catch(e){console.warn('WebCodecs 编码不可用，改用 MediaRecorder：',e&&e.message||e)}
+    return encodeMR(frames,map);
   }
-  async function encodeMR(frames){
+  async function encodeMR(frames,map){
+    const cv=f=>map?map(f):f.c;
     const [w,h]=[frames[0].c.width,frames[0].c.height];
     const out=document.createElement('canvas');out.width=w;out.height=h;const x=out.getContext('2d');
     const cands=['video/mp4;codecs=avc1.42E01F','video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
@@ -5478,17 +5749,17 @@ const LP=window.LP=(()=>{
     mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
     const done=new Promise(r=>mr.onstop=r);
     const t0=frames[0].t,dur=frames[frames.length-1].t-t0;
-    x.drawImage(frames[0].c,0,0,w,h);
+    x.drawImage(cv(frames[0]),0,0,w,h);
     mr.start(200);
     const st=performance.now();let i=1;
     await new Promise(res=>{
       const step=()=>{
         const el=performance.now()-st;
-        while(i<frames.length&&el>=frames[i].t-t0){x.drawImage(frames[i].c,0,0,w,h);i++}
+        while(i<frames.length&&el>=frames[i].t-t0){x.drawImage(cv(frames[i]),0,0,w,h);i++}
         if(i>=frames.length&&el>=dur+120)res();else requestAnimationFrame(step)};
       requestAnimationFrame(step);
     });
-    x.drawImage(frames[frames.length-1].c,0,0,w,h);
+    x.drawImage(cv(frames[frames.length-1]),0,0,w,h);
     await new Promise(r=>setTimeout(r,150));
     mr.stop();await done;stream.getTracks().forEach(t=>t.stop());
     return{blob:new Blob(chunks,{type:mt.split(';')[0]}),ext:mt.includes('mp4')?'mp4':'webm',mime:mt.split(';')[0],dur:dur/1000};
@@ -5546,6 +5817,31 @@ const LP=window.LP=(()=>{
     if(LP.saveMode==='native')toast('这里没有原生壳，不能直接写入系统实况，已用「照片 + 视频」保存');
   }
   LP.setupSave=setupSave;LP.encode=encode;
+  /* ---- 11.1.3：WebCodecs 探测（决定走「流式」还是「整段留内存」）+ 实况时长选项 ---- */
+  const WC_TRIES=[['avc1','avc1.42E028',{avc:{format:'avc'}}],['avc1','avc1.42E01F',{avc:{format:'avc'}}],['avc1','avc1.4D401F',{avc:{format:'avc'}}],['vp09','vp09.00.10.08',{}]];
+  async function probeWC(){
+    let found=null;
+    try{
+      if(window.VideoEncoder&&window.VideoFrame&&typeof Mp4Mux!=='undefined'){
+        for(const [c,str,extra] of WC_TRIES){
+          const k=Object.assign({codec:str,width:1080,height:810,bitrate:6e6,framerate:LP.FPS},extra);
+          let s=null;try{s=await VideoEncoder.isConfigSupported(k)}catch(_){}
+          if(s&&s.supported){found={codec:c,str,extra};break}
+        }
+      }
+    }catch(_){}
+    if(!!found!==!!LP.wc){LP.buf.length=0;LP.free.length=0}
+    LP.wc=found;
+  }
+  LP.probeWC=probeWC;
+  LP.setDur=v=>{v=+v;if(![3,5,6,8].includes(v))return false;LP.DUR=v;LP.POST=v*1000-LP.PRE;try{localStorage.setItem('lucida.liveDur',String(v))}catch(_){}return true};
+  {const box=document.getElementById('ldRows');
+   if(box){
+     const syncD=()=>box.querySelectorAll('.mrow').forEach(b=>b.classList.toggle('on',+b.dataset.v===LP.DUR));
+     box.addEventListener('click',e=>{const b=e.target.closest('.mrow');if(!b)return;if(LP.setDur(+b.dataset.v)){syncD();toast('实况时长：'+LP.DUR+' 秒（快门前 1.5 秒 + 快门后 '+(LP.POST/1000)+' 秒）')}});
+     syncD();
+   }}
+  probeWC();
   $('#vSave').addEventListener('click',async e=>{
     const it=e.currentTarget._live;if(!it)return;
     e.preventDefault();e.stopPropagation();
@@ -5557,7 +5853,7 @@ const LP=window.LP=(()=>{
       const pb=await (await fetch(it.url)).blob(),vb=await (await fetch(it.live.url)).blob(),base=it.name.replace(/\.jpg$/,'');
       const b64=b=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=no;r.readAsDataURL(b)});
       const id=(crypto.randomUUID?crypto.randomUUID():String(Date.now())).toUpperCase();
-      const msg={type:'saveLivePhoto',id,photo:await b64(pb),photoName:base+'.jpg',video:await b64(vb),videoName:base+'.'+it.live.ext,videoMime:it.live.mime,duration:it.live.dur};
+      const msg={type:'saveLivePhoto',id,photo:await b64(pb),photoName:base+'.jpg',video:await b64(vb),videoName:base+'.'+it.live.ext,videoMime:it.live.mime,duration:it.live.dur,still:it.live.still};
       window.lucidaLiveResult=(ok,m)=>toast(ok?'已保存到系统相册（实况照片）':'保存失败：'+(m||'未知错误'));
       if(window.LucidaLive&&window.LucidaLive.save){await window.LucidaLive.save(msg);return}
       webkit.messageHandlers.lucidaLive.postMessage(msg);toast('正在交给系统保存…');
@@ -11102,13 +11398,13 @@ const LGN=window.LGN=(()=>{
   const mk=t=>{const d=document.createElement('div');d.className='mcat';d.textContent=t;return d};
   const grp=(t,...a)=>{if(a.some(Boolean))add(mk(t),...a)};
   const mkSec=t=>{const d=document.createElement('div');d.className='msec';d.textContent=t;return d};
-  const rowAcc=lst('rowAccount'),rowLook=lst('rowLook'),lf=lst('lfRows'),pbl=lst('pblRows'),direct=lst('rowDirect'),liveSave=lst('rowLiveSave'),
+  const rowAcc=lst('rowAccount'),rowLook=lst('rowLook'),lf=lst('lfRows'),ld=lst('ldRows'),pbl=lst('pblRows'),direct=lst('rowDirect'),liveSave=lst('rowLiveSave'),
         dev=lst('rowCams'),zoom=lst('rowZoom'),tele=lst('rowTele'),lsw=lst('rowLsw'),donate=lst('rowDonate'),zm=g('zmBox'),bottom=main.querySelector('.mbottom');
   const seq=[];
   const add=(...a)=>a.forEach(x=>{if(x)seq.push(x)});
   grp('账号',rowAcc);
   add(mk('界面与外观'),rowLook);
-  add(mk('拍照与实况'),msecBy('实况帧率'),lf,noteAfter(lf),mkSec('实况保存'),liveSave);
+  add(mk('拍照与实况'),msecBy('实况帧率'),lf,noteAfter(lf),msecBy('实况时长'),ld,noteAfter(ld),mkSec('实况保存'),liveSave);
   add(mk('录像'),msecBy('录制'),direct,noteAfter(direct));
   add(mk('变焦与镜头'),msecBy('变焦'),zoom,tele,lsw,noteAfter(lsw),zm);
   add(mk('全景'),msecBy('360'),pbl);
@@ -11145,7 +11441,7 @@ const LGN=window.LGN=(()=>{
    · 照片格式：JPEG / HEIF / ProRAW（ProRAW 由原生相机拍，同时写入系统相册）
    · 相册导入：用系统选择器，实况带配对视频一起进来，可编辑，保存时仍是实况
    · 开机检测摄像头、尽快预热、屏幕比例选最合适的取景比例
-   · 原生液态玻璃：把玻璃控件的位置报给原生，由 UIGlassEffect 绘制 */
+   （原生液态玻璃叠层在 11.1.2 整体去掉了：现在原生 App 和网页一样，只用网页自带的玻璃样式） */
 (function(){
   const NI=window.__LUCIDA_NATIVE__,H=window.webkit&&webkit.messageHandlers&&webkit.messageHandlers.lucida;
   if(!NI||!H)return;
@@ -11156,8 +11452,7 @@ const LGN=window.LGN=(()=>{
     get target(){return LS('lucida.saveTarget')==='system'?'system':'album'},
     set target(v){LS('lucida.saveTarget',v==='system'?'system':'album')},
     get fmt(){const f=LS('lucida.fmt');return FMT.includes(f)?f:'jpeg'},
-    set fmt(v){LS('lucida.fmt',FMT.includes(v)?v:'jpeg')},
-    get glass(){return !!NI.liquidGlass&&LS('lucida.natglass')!=='0'}};
+    set fmt(v){LS('lucida.fmt',FMT.includes(v)?v:'jpeg')}};
 
   /* ---------- 分块上传 ---------- */
   const b64=b=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=no;r.readAsDataURL(b)});
@@ -11200,14 +11495,15 @@ const LGN=window.LGN=(()=>{
     const pb=await (await fetch(it.url)).blob(),vb=await (await fetch(it.live.url)).blob(),base=it.name.replace(/\.jpg$/,'');
     const id=uid().toUpperCase();
     window.lucidaLiveResult=(ok,m)=>toast(ok?'已保存到系统相册（实况照片）':'实况保存失败：'+(m||'未知错误'));
-    webkit.messageHandlers.lucidaLive.postMessage({type:'saveLivePhoto',id,photo:await b64(pb),photoName:base+'.jpg',video:await b64(vb),videoName:base+'.'+it.live.ext,videoMime:it.live.mime,duration:it.live.dur});
+    webkit.messageHandlers.lucidaLive.postMessage({type:'saveLivePhoto',id,photo:await b64(pb),photoName:base+'.jpg',video:await b64(vb),videoName:base+'.'+it.live.ext,videoMime:it.live.mime,duration:it.live.dur,still:it.live.still});
   }
   async function autoSave(it){
     if(it._nsaved||!/^澄影_/.test(it.name||''))return;
     it._nsaved=true;
     try{
       if(it.type==='image'&&it.live){            /* 实况：等合成完，整条写成系统实况照片 */
-        for(let i=0;i<80&&(!it.live.url||it.live.pending);i++)await new Promise(r=>setTimeout(r,250));
+        const lim=Math.ceil(((window.LP&&LP.DUR||3)*2.5+14)*4);   /* 实况时长越长，合成等得越久（3 秒≈86 次，8 秒≈136 次，每次 0.25 秒） */
+        for(let i=0;i<lim&&(!it.live.url||it.live.pending);i++)await new Promise(r=>setTimeout(r,250));
         if(it.live.url&&!it.live.pending){await liveToNative(it);return}
       }
       const b=await (await fetch(it.url)).blob();
@@ -11247,6 +11543,14 @@ const LGN=window.LGN=(()=>{
     finally{S.switching=false;S.busy=false}
   };
 
+  /* ---------- 点按对焦 / 长按锁定 AE·AF：网页取景（WKWebView）没有对焦接口，交给原生设置摄像头对焦点 ---------- */
+  LNB.focus=async function(x,y,lock,label){
+    const o=(screen.orientation&&screen.orientation.angle)||0;
+    const r=await call('focus',{x,y,lock:!!lock,label:label||'',position:S.facing==='user'?'front':'back',angle:o});
+    return !!(r&&r.ok);
+  };
+  LNB.focusRelease=async function(){try{await call('focus',{release:true,position:S.facing==='user'?'front':'back',label:'',angle:0})}catch(_){}};
+
   /* ---------- 相册「导入」：用系统选择器（实况连配对视频一起导入） ---------- */
   function hookImport(){
     const btn=document.getElementById('alImport'),inp=document.getElementById('alImpIn');if(!btn||!inp)return;
@@ -11262,7 +11566,7 @@ const LGN=window.LGN=(()=>{
   }
 
   /* ---------- 设置界面 ---------- */
-  const SWSTYLE='#rowSaveSys,#rowNatGlass{height:auto;min-height:60px;padding-top:10px;padding-bottom:10px}#rowSaveSys .mt,#rowNatGlass .mt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;white-space:normal;line-height:1.3}#rowSaveSys small,#rowNatGlass small{font-size:12px;opacity:.6;font-weight:400;line-height:1.35}'
+  const SWSTYLE='#rowSaveSys{height:auto;min-height:60px;padding-top:10px;padding-bottom:10px}#rowSaveSys .mt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;white-space:normal;line-height:1.3}#rowSaveSys small{font-size:12px;opacity:.6;font-weight:400;line-height:1.35}'
     +'#fmtSeg button.dis{opacity:.35}';
   function buildRows(){
     const main=document.querySelector('#pMain .minner');if(!main||document.getElementById('rowSaveSys'))return;
@@ -11273,11 +11577,6 @@ const LGN=window.LGN=(()=>{
     const r1=row('rowSaveSys','<rect x="3.5" y="4.5" width="17" height="15" rx="3.5"/><path d="m3.5 15.5 5-4.5 4 3.5 3-2.5 5 4"/><circle cx="9" cy="9" r="1.4"/>','直接保存进系统相册','关：照片 / 实况 / 视频先存在澄影相册，在澄影相册里自己点「保存」或导出。开：拍完同时写进系统相册。',LNB.target==='system');
     r1.addEventListener('click',()=>{LNB.target=LNB.target==='system'?'album':'system';r1.classList.toggle('on',LNB.target==='system');toast(LNB.target==='system'?'已开启：拍完直接保存进系统相册':'已关闭：先保存在澄影相册')});
     lst.appendChild(r1);
-    if(NI.liquidGlass){
-      const r2=row('rowNatGlass','<rect x="3.5" y="7" width="17" height="10" rx="5"/><path d="M8 10.5c1-.8 2.4-1 3.5-.3"/>','原生液态玻璃','用苹果系统的液态玻璃绘制顶部按钮、药丸、设置面板、功能面板和变焦条（需要 iOS 26）。',LNB.glass);
-      r2.addEventListener('click',()=>{LS('lucida.natglass',LNB.glass?'0':'1');r2.classList.toggle('on',LNB.glass);applyGlass();toast(LNB.glass?'已开启原生液态玻璃':'已关闭，使用澄影自带的玻璃')});
-      lst.appendChild(r2);
-    }
     const cats=[...main.querySelectorAll('.mcat')],sup=cats.find(e=>e.textContent.trim()==='支持'),bottom=main.querySelector('.mbottom');
     const anchor=sup||bottom||null;
     main.insertBefore(mk('苹果原生'),anchor);main.insertBefore(lst,anchor);
@@ -11301,23 +11600,6 @@ const LGN=window.LGN=(()=>{
   }
   LNB.syncFmt=()=>{const s=document.getElementById('fmtSeg');if(s)s.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.f===LNB.fmt))};
 
-  /* ---------- 原生液态玻璃：报告需要玻璃的矩形 ---------- */
-  let gRaf=0,gLast='',gBurst=0;
-  function sendGlass(){
-    gRaf=0;
-    const on=LNB.glass&&LG.get().theme==='glass';
-    const list=on?LG.surfaces().map(s=>({id:s.id,x:Math.round(s.x*2)/2,y:Math.round(s.y*2)/2,w:Math.round(s.w*2)/2,h:Math.round(s.h*2)/2,radius:Math.round((s.radius||0)*2)/2,kind:s.kind})):[];
-    const key=on+JSON.stringify(list);if(key===gLast)return;gLast=key;
-    call('glass',{on,surfaces:list}).catch(()=>{});
-  }
-  const gSched=()=>{if(!gRaf)gRaf=requestAnimationFrame(sendGlass)};
-  function gPulse(ms){gBurst=performance.now()+ms;(function f(){gSched();if(performance.now()<gBurst)requestAnimationFrame(f)})()}
-  function applyGlass(){
-    LG.native=LNB.glass?{apply:()=>gSched()}:null;
-    LG.set({},true);gLast='';gSched();
-  }
-  LNB.applyGlass=applyGlass;
-
   /* ---------- 摄像头检测 / 预热 / 屏幕比例 ---------- */
   function boot(){
     buildRows();buildFmt();hookImport();
@@ -11329,8 +11611,6 @@ const LGN=window.LGN=(()=>{
     try{if(!LS('lucida.ratio')&&!S.og){const r=NI.screen.ratio>=1.55?'16:9':'4:3';if(RATIO[r]&&S.ratio!==r)setRatio(r)}}catch(_){}
     /* 镜头预热：不等空闲，开机检测完马上把超广角 / 主摄 / 长焦一起开着待命 */
     setTimeout(()=>{try{if(S.lsw!=='orig'&&typeof poolSchedule==='function')poolSchedule(300)}catch(_){}},1800);
-    if(LNB.glass){applyGlass();new MutationObserver(()=>gPulse(700)).observe(document.getElementById('app')||document.body,{attributes:true,subtree:true,attributeFilter:['class','style']});
-      ['transitionrun','transitionend','animationstart','animationend','scroll','resize','orientationchange'].forEach(ev=>addEventListener(ev,()=>gPulse(700),true));setInterval(gSched,400)}
   }
   LNB.boot=boot;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));else setTimeout(boot,0);

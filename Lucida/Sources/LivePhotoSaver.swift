@@ -12,7 +12,7 @@ import CoreMedia
 /// 做好后用 PHAssetCreationRequest 同时加 .photo + .pairedVideo 两个资源。
 enum LivePhotoSaver {
 
-    /// 网页 saveLivePhoto 消息：{id, photo(b64), photoName, video(b64), videoName, videoMime, duration}
+    /// 网页 saveLivePhoto 消息：{id, photo(b64), photoName, video(b64), videoName, videoMime, duration, still}
     static func saveFromWeb(_ body: [String: Any], completion: @escaping (Bool, String?) -> Void) {
         guard let ps = body["photo"] as? String, let vs = body["video"] as? String,
               let pd = Data(base64Encoded: ps), let vd = Data(base64Encoded: vs) else {
@@ -26,16 +26,19 @@ enum LivePhotoSaver {
         let vu = dir.appendingPathComponent(tag + "-" + vn.replacingOccurrences(of: "/", with: "_"))
         do { try pd.write(to: pu); try vd.write(to: vu) } catch { completion(false, "写入临时文件失败"); return }
         let dur = (body["duration"] as? Double) ?? 0
-        save(photo: pu, video: vu, duration: dur, completion: completion)
+        // 11.1.3：实况时长可选 3 / 5 / 6 / 8 秒，快门前固定 1.5 秒左右——静帧时间由网页给出（没给就取中间）
+        let still = body["still"] as? Double
+        save(photo: pu, video: vu, duration: dur, still: still, completion: completion)
     }
 
-    static func save(photo: URL, video: URL, duration: Double, completion: @escaping (Bool, String?) -> Void) {
+    static func save(photo: URL, video: URL, duration: Double, still stillSec: Double? = nil, completion: @escaping (Bool, String?) -> Void) {
         let id = UUID().uuidString
         let dir = SchemeHandler.outDir
         guard let photoOut = tagPhoto(photo, identifier: id, into: dir) else { completion(false, "照片写入标识失败"); return }
         let movOut = dir.appendingPathComponent(UUID().uuidString + ".mov")
-        // 静帧取视频中间（实况封面通常在中间）
-        let still = CMTime(seconds: max(0, duration / 2), preferredTimescale: 600)
+        // 静帧 = 按下快门的那一刻（网页算好的）；没有就取视频中间
+        let stillAt = (stillSec != nil && stillSec! >= 0 && (duration <= 0 || stillSec! < duration)) ? stillSec! : max(0, duration / 2)
+        let still = CMTime(seconds: stillAt, preferredTimescale: 600)
         tagVideo(input: video, output: movOut, identifier: id, still: still) { ok, msg in
             guard ok else { completion(false, msg ?? "视频处理失败"); return }
             PhotoSaver.auth { granted in

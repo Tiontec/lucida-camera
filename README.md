@@ -1,7 +1,7 @@
-# 澄影 · iOS 原生 App 工程（11.1.0）
+# 澄影 · iOS 原生 App 工程（11.1.3）
 
-网页（`Lucida/Resources/web/index.html`，= 手机版 11.1.0 + 原生接口）装进 WKWebView 外壳里，界面和调色算法都还是澄影自己的；
-原生这一层负责网页做不到的事：写入系统相册、真正的实况照片、HEIF / ProRAW 原生拍摄、摄像头检测、原生液态玻璃叠层。
+网页（`Lucida/Resources/web/index.html`，= 手机版 11.1.3 + 原生接口）装进 WKWebView 外壳里，界面和调色算法都还是澄影自己的；
+原生这一层负责网页做不到的事：写入系统相册、真正的实况照片、HEIF / ProRAW 原生拍摄、摄像头检测、原生点按对焦。液态玻璃只用网页自带的那套（11.1.2 起原生玻璃叠层已整体去掉）。
 
 ## 一、用 GitHub 自动打包 IPA（不需要 Mac）
 
@@ -10,8 +10,7 @@
 3. 跑完（约 5～10 分钟）在这次运行页面最下面的 **Artifacts** 下载 `Lucida-unsigned-ipa`，解压得到 `Lucida-unsigned.ipa`。
 4. 这是**未签名**的 IPA：用 AltStore / Sideloadly / TrollStore / 爱思助手 等工具用你自己的 Apple ID 或证书签名安装即可。
 
-要原生液态玻璃：运行器默认是 `macos-26`（Xcode 26）。如果 GitHub 上没有这个运行器，手动运行时把 `runner` 填成 `macos-15`，
-这时照样能打包，只是编译里不含 iOS 26 的 `UIGlassEffect`，原生玻璃开关会自动不出现，网页自带的玻璃照常用。
+运行器默认是 `macos-15`（不再需要 iOS 26 SDK）；想换别的运行器，手动运行时在 `runner` 里填名字即可。
 
 ### 想直接出已签名的 IPA（可选）
 在仓库 Settings → Secrets and variables → Actions 里添加：
@@ -37,12 +36,12 @@ Lucida/Sources/
   AppDelegate.swift             入口
   WebViewController.swift       WKWebView 外壳（相机 / 麦克风 / 陀螺仪放行、弹窗、外链）
   SchemeHandler.swift           lucida:// 协议：网页文件 + 原生导出的临时文件（支持 Range）
-  NativeBridge.swift            网页 ↔ 原生消息（分块上传、保存、导入、原生拍摄、触感、玻璃）
+  NativeBridge.swift            网页 ↔ 原生消息（分块上传、保存、导入、原生拍摄、原生对焦、触感）
   PhotoSaver.swift              写入系统相册、JPEG→HEIC
   LivePhotoSaver.swift          实况照片：内容标识符 + still-image-time 元数据 + PHAssetCreationRequest
   LivePicker.swift              系统选择器导入照片 / 视频 / 实况（连配对视频）
   NativeCamera.swift            AVCapturePhotoOutput：JPEG / HEIF / Apple ProRAW，虚拟多摄变焦
   DeviceProbe.swift             开机检测摄像头、屏幕比例
-  GlassOverlay.swift            UIGlassEffect 原生液态玻璃叠层（iOS 26 + Xcode 26）
+  NativeFocus.swift             点按对焦 / 长按锁定 AE·AF（原生设置摄像头对焦点）
 Lucida/Resources/               图标（已去黑边，1024 满版）、启动图、网页
 ```

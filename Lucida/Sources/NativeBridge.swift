@@ -10,8 +10,8 @@ import AVFoundation
 ///   saveFile  {id,name,mime,mode,format}                  存到系统相册（照片/视频）或弹出分享面板（其它文件）
 ///   pickMedia {live,limit}                                原生选择器：导入照片 / 视频 / 实况（含配对视频）
 ///   capture   {position,zoom,format,orientation}          原生相机拍一张（JPEG / HEIF / ProRAW），同时写入系统相册
+///   focus     {x,y,lock,release,label,position,angle}     点按对焦 / 长按锁定 AE·AF（原生设置摄像头对焦点）
 ///   haptic    {style}                                     触感
-///   glass     {on,surfaces:[{id,x,y,w,h,radius,kind}]}    原生液态玻璃叠层
 ///   probe     {}                                          重新检测设备摄像头
 final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
     weak var host: WebViewController?
@@ -33,6 +33,8 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
                                limit: (body["limit"] as? Int) ?? 0) { files in reply(["files": files], nil) }
         case "capture":
             NativeCamera.shared.capture(body: body) { result in reply(result, nil) }
+        case "focus":
+            NativeFocus.apply(body) { ok in reply(["ok": ok], nil) }
         case "haptic":
             let style = (body["style"] as? String) ?? "light"
             let g: UIImpactFeedbackGenerator
@@ -42,8 +44,6 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             default: g = UIImpactFeedbackGenerator(style: .light)
             }
             g.impactOccurred(); reply(true, nil)
-        case "glass":
-            host?.glass.update(body); reply(true, nil)
         case "probe":
             reply(DeviceProbe.info(), nil)
         default:

@@ -53,12 +53,8 @@ enum DeviceProbe {
         if let w = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.windows.first }).first {
             safe = ["top": Double(w.safeAreaInsets.top), "bottom": Double(w.safeAreaInsets.bottom)]
         }
-        var glass = false
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) { glass = true }   // 只有用 Xcode 26 编译、且系统是 iOS 26+，才有真正的原生液态玻璃
-        #endif
         return [
-            "version": "11.1.0",
+            "version": "11.1.3",
             "model": machine(),
             "ios": UIDevice.current.systemVersion,
             "cameras": cams,
@@ -68,8 +64,7 @@ enum DeviceProbe {
                        "ratio": Double(max(b.width, b.height) / max(1, min(b.width, b.height))), "safe": safe],
             // 能不能拍 ProRAW 要等真正建立相机会话才知道；三摄 Pro 机型一般可以
             "rawLikely": virtualTriple,
-            "heif": true,
-            "liquidGlass": glass
+            "heif": true
         ]
     }
 
