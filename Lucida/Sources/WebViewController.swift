@@ -5,6 +5,7 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
     private(set) var webView: WKWebView!
     private let bridge = NativeBridge()
     private let legacy = LegacyHandler()
+    private let keyboardPin = KeyboardPin()
 
     override var prefersStatusBarHidden: Bool { false }
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
@@ -52,6 +53,12 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
 
         bridge.host = self
         legacy.host = self
+
+        // 键盘弹出时页面原地不动（登录验证码条不被顶出屏幕）；键盘遮住多少告诉网页，由网页只抬输入框那一行
+        keyboardPin.attach(to: wv)
+        keyboardPin.onHeight = { [weak self] h, _ in
+            self?.js("window.__lucidaKb&&window.__lucidaKb(\(Int(h.rounded())))")
+        }
 
         wv.load(URLRequest(url: URL(string: "lucida://app/index.html")!))
     }

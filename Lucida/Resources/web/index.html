@@ -3357,9 +3357,9 @@ async function startRec(){
   /* 直录：摄像头原始画面直接交给 MediaRecorder（硬件编码，帧率最稳）。
      条件：未放大、前置未镜像、所选比例与镜头原生画面一致；否则走画布裁切录制。 */
   const tr=S.live&&S.stream&&S.stream.getVideoTracks()[0],vw=V.videoWidth,vh=V.videoHeight;
-  const GRV=!!(Grade.pv&&!Grade.dead&&!dualLive()&&(gradeActive()||(typeof filterOn==='function'&&filterOn())));
+  const GRV=!!(Grade.pv&&!Grade.dead&&!dualPip()&&(gradeActive()||(typeof filterOn==='function'&&filterOn())));
   S.recGr=GRV?{grade:gradeActive()?{sid:ST.cur.sid,x:ST.cur.x,y:ST.cur.y,str:ST.cur.str}:null,ft:(window.CINE?CINE.key():FT.sid)}:null;S.recRawC=null;S.recRawCtx=null;S.recMrR=null;S.recRawP=null;
-  const direct=!!(S.direct&&!dualLive()&&tr&&vw&&vh&&Math.abs(vw/vh-A)<.025&&effZ(S.lens,S.zoom)<1.02&&!mirrored()&&!GRV&&!(typeof stabOn==='function'&&stabOn()));
+  const direct=!!(S.direct&&!dualPip()&&tr&&vw&&vh&&Math.abs(vw/vh-A)<.025&&effZ(S.lens,S.zoom)<1.02&&!mirrored()&&!GRV&&!(typeof stabOn==='function'&&stabOn()));
   S.recDirect=direct;S.recFps=sp.fps;S.recN=0;S.recLast=0;S.recEl=null;S.recArmed=false;S.zLock=S.lt;S.zT=0;
   let stream,ow=w,oh=h;
   if(direct){S.recC=null;S.recCtx=null;ow=vw;oh=vh;stream=new MediaStream([tr])}
@@ -3461,9 +3461,14 @@ function loop(t){
 }
 
 /* ===== v3.3.4：镜头检测 / 长焦切换 / 变焦放大取景框 / 版本更新 ===== */
-const APP_VER='11.1.3';
+const APP_VER='11.1.5';
 try{const av=$('#aboutVer');if(av)av.textContent='LUCIDA · 版本 '+APP_VER+(window.LUCIDA_WATCH?' · 手表版':'')}catch(e){}
 const UPDATES=[
+ {v:'11.1.5',d:'2026年11月13日',items:[
+   '<b>登录验证码不再被键盘顶走：</b>输入验证码时整个页面不再往上顶——页面固定不动，顶部的验证码数字条一直看得见；键盘太高时只有输入框那一行往上抬到刚好露在键盘上方，被它盖住的行淡出。登录页和「更多设置 → 登录」弹窗都一样；苹果 / 安卓原生壳也配合锁住了系统自己的顶起（原生壳把键盘高度告诉网页）。',
+   '<b>双摄（前后摄像头同时拍摄）：</b>苹果 / 安卓原生 App 里，「更多功能 → 双摄」直接进入原生双摄相机——原生代码同时打开前后摄像头，拍照、录像（带声音）都是原生合成的画中画 / 上下分屏，拍完同时存进系统相册和澄影相册。更多设置里新增「原生双摄相机」入口和「相机里的双摄按钮用原生双摄」开关。这台设备不支持时自动改用网页双摄。',
+   '<b>网页双摄也能录像：</b>设备一次只能开一颗摄像头时用「分时双摄」——拍照先拍后置、瞬间切前置抓一帧再合成画中画；录像小窗是定格的前置画面，长按小窗可刷新。有小窗要合成时录像不再走「直录」，所以录像里一定带小窗。',
+ ]},
  {v:'11.1.3',d:'2026年11月8日',items:[
   '<b>实况时长可选：</b>更多设置 → 实况时长，3 / 5 / 6 / 8 秒（默认 3 秒）。快门前固定记录 1.5 秒，其余时间在快门后继续记录；存进系统相册的静帧点也跟着对到按下快门的那一刻。手机版、手表版、iOS 原生版都有。',
   '<b>实况提示进灵动岛：</b>原来的「实况 x / 3.0 秒」弹窗去掉了，拍的时候灵动岛里显示「实况 1.5/3.0s」，合成时显示「实况 合成中…」，完成后短暂显示「实况 已保存」；只有设置里选了「无灵动岛」才用弹窗显示。三个版本一致。',
@@ -5255,8 +5260,23 @@ $p('#pnCDone').onclick=async()=>{
   if(id)N.openViewer(id,true)};
 })();
 
-/* ===== v3.5.0：前后摄像头同时拍摄（画中画）===== */
-const DUAL={on:false,busy:false,st:null,x:1,y:0,wf:.3,fails:0,bad:0,drag:null};
+/* ===== v3.5.0：前后摄像头同时拍摄（画中画）=====
+   11.1.5 起，双摄有两层：
+   ① 原生壳（苹果 App / 安卓 App）里，「双摄」按钮直接进原生双摄相机（dualcam_bridge.js 的 NDC.open）：
+      苹果 = AVCaptureMultiCamSession，安卓 = Camera2 双摄像头 + OpenGL，前后同时工作，拍照 / 录像（带声音）都是原生合成的，不走网页画面；
+      原生说「这台设备不行」时，才回落到下面第 ② 层。
+   ② 网页自己的双摄（DUAL.mode）：
+   live   ：网页同时开前后两路摄像头（一部分安卓手机、电脑浏览器可以），实时画中画
+   seq    ：「分时双摄」。设备一次只能开一颗摄像头（iPhone Safari、很多安卓手表）时的兜底：拍照时先拍后置、瞬间切到前置抓一帧，
+            合成画中画；录像小窗是定格的前置画面。以前这种设备只会弹一个「不支持」的提示。 */
+const DUAL={on:false,busy:false,st:null,x:1,y:0,wf:.3,fails:0,bad:0,drag:null,mode:'',still:null,stillN:0,viewKey:'',hold:null,plain:null,why:'',poolOff0:false,lpWas:false,keep:false,keepSnap:null};
+/* 分时双摄切镜头的过程中，让 S.snapOn / S.snap 一直是「定格中」：swap() 结束时想撤掉定格也撤不掉，由 dualSeqGrab 最后自己撤。
+   这样预览、拍照、录像都只用后置的定格画面，前置的画面一帧也不会露出来 */
+{let on=!!S.snapOn,sn=S.snap||null;
+  Object.defineProperty(S,'snapOn',{configurable:true,enumerable:true,get(){return DUAL.keep?true:on},set(v){on=v}});
+  Object.defineProperty(S,'snap',{configurable:true,enumerable:true,get(){return DUAL.keep?DUAL.keepSnap:sn},set(v){sn=v}})}
+/* 现在有没有小窗要合成进成品（实时小窗，或分时双摄的定格小窗）：录像要据此放弃「直录」，改走画布合成 */
+const dualPip=()=>dualLive()||!!(DUAL.on&&DUAL.mode==='seq'&&DUAL.still&&(S.facing==='environment'||DUAL.keep));
 const dualBox=$('#dualPip'),dualVid=$('#dualVid'),dsleep=ms=>new Promise(r=>setTimeout(r,ms));
 const dualLive=()=>!!(DUAL.on&&DUAL.st&&S.facing==='environment'&&dualVid.videoWidth>0&&DUAL.st.getVideoTracks().some(t=>t.readyState==='live'&&!t.muted));
 /* 小窗位置按「取景框宽度」的比例记录，所以预览、录像、照片里位置完全一致 */
@@ -5264,11 +5284,26 @@ function dualGeom(W,H){const pw=Math.round(W*DUAL.wf),ph=Math.round(pw*4/3),m=Ma
   return{pw,ph,m,px:Math.round(m+Math.max(0,W-pw-2*m)*DUAL.x),py:Math.round(m+Math.max(0,H-ph-2*m)*DUAL.y),r:Math.round(pw*.16)}}
 function dualLayout(){
   const vf=$('#vf'),W=vf.clientWidth,H=vf.clientHeight;if(!W)return;const g=dualGeom(W,H);
-  Object.assign(dualBox.style,{width:g.pw+'px',height:g.ph+'px',left:g.px+'px',top:g.py+'px',borderRadius:g.r+'px',display:(DUAL.on&&S.facing==='environment')?'block':'none'});
-  dualBox.classList.toggle('mir',!!S.mirror)}
+  Object.assign(dualBox.style,{width:g.pw+'px',height:g.ph+'px',left:g.px+'px',top:g.py+'px',borderRadius:g.r+'px',display:(DUAL.on&&(S.facing==='environment'||DUAL.keep))?'block':'none'});
+  dualBox.classList.toggle('mir',!!S.mirror);
+  if(DUAL.mode==='seq')dualStillView()}
+/* 分时双摄：小窗里显示最近一次前置抓拍（定格画面，翻转方向和实时小窗一致） */
+function dualStillView(){
+  const on=!!(DUAL.on&&DUAL.mode==='seq'&&DUAL.still);
+  dualVid.style.display=on?'none':'';
+  if(!on){dualBox.style.backgroundImage='';DUAL.viewKey='';return}
+  const k=DUAL.stillN+(S.mirror?'m':'');if(DUAL.viewKey===k)return;DUAL.viewKey=k;
+  const c=document.createElement('canvas'),w=240,h=320,x=c.getContext('2d');c.width=w;c.height=h;
+  if(S.mirror){x.translate(w,0);x.scale(-1,1)}x.drawImage(DUAL.still,0,0,w,h);
+  dualBox.style.backgroundImage='url('+c.toDataURL('image/jpeg',.8)+')';dualBox.style.backgroundSize='cover';dualBox.style.backgroundPosition='center'}
+/* 前置抓拍：按小窗比例（3:4）居中裁出一张定格画面 */
+function dualStillFrom(v){
+  const vw=v.videoWidth,vh=v.videoHeight,pw=720,ph=960,c=document.createElement('canvas');c.width=pw;c.height=ph;
+  const k=Math.max(pw/vw,ph/vh),sw=pw/k,sh=ph/k;c.getContext('2d').drawImage(v,(vw-sw)/2,(vh-sh)/2,sw,sh,0,0,pw,ph);return c}
 function dualRR(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
 function dualDraw(ctx,W,H){
-  if(!dualLive())return;const g=dualGeom(W,H),v=dualVid,vw=v.videoWidth,vh=v.videoHeight;
+  const live=dualLive(),seq=!live&&!!(DUAL.on&&DUAL.mode==='seq'&&DUAL.still&&(S.facing==='environment'||DUAL.keep));
+  if(!live&&!seq)return;const g=dualGeom(W,H),v=live?dualVid:DUAL.still,vw=live?v.videoWidth:v.width,vh=live?v.videoHeight:v.height;
   const k=Math.max(g.pw/vw,g.ph/vh),sw=g.pw/k,sh=g.ph/k,sx=(vw-sw)/2,sy=(vh-sh)/2;
   ctx.save();dualRR(ctx,g.px,g.py,g.pw,g.ph,g.r);ctx.clip();
   if(S.mirror){ctx.translate(g.px+g.pw,g.py);ctx.scale(-1,1);ctx.drawImage(v,sx,sy,sw,sh,0,0,g.pw,g.ph)}else ctx.drawImage(v,sx,sy,sw,sh,g.px,g.py,g.pw,g.ph);
@@ -5276,7 +5311,10 @@ function dualDraw(ctx,W,H){
   ctx.save();dualRR(ctx,g.px,g.py,g.pw,g.ph,g.r);ctx.lineWidth=Math.max(2,W*.006);ctx.strokeStyle='rgba(255,255,255,.92)';ctx.stroke();ctx.restore()}
 /* 预览(vctx)里不画，由页面上的小窗显示；录像画布和拍照画布里画 */
 {const _r=renderTo;renderTo=function(ctx,W,H){_r(ctx,W,H);if(ctx!==vctx)dualDraw(ctx,W,H)}}
-{const _s=snapCanvas;snapCanvas=function(){const c=_s();dualDraw(c.getContext('2d'),c.width,c.height);return c}}
+{const _s=snapCanvas;DUAL.plain=_s; /* plain = 不带小窗的原始取景帧（分时双摄先留住后置这一帧用） */
+  snapCanvas=function(){
+    if(DUAL.hold){const c=DUAL.hold;DUAL.hold=null;return c}   /* 分时双摄：已合成好的这一帧，原来的拍照流程（调色 / 入相册）直接用它 */
+    const c=_s();dualDraw(c.getContext('2d'),c.width,c.height);return c}}
 
 async function dualRecover(){ /* 打开前摄失败后，确认后摄还活着；死了就重开 */
   const t=S.stream&&S.stream.getVideoTracks()[0];
@@ -5284,7 +5322,10 @@ async function dualRecover(){ /* 打开前摄失败后，确认后摄还活着�
 function dualStop(){
   if(DUAL.st){DUAL.st.getTracks().forEach(t=>t.stop());DUAL.st=null}try{dualVid.srcObject=null}catch(_){}}
 function dualClose(msg){
-  DUAL.on=false;dualStop();dualLayout();mfSync();if(msg)toast(msg)}
+  const mode=DUAL.mode;
+  DUAL.on=false;DUAL.mode='';dualStop();
+  if(mode==='seq')dualSeqEnd();
+  dualLayout();mfSync();if(msg)toast(msg)}
 async function dualGrab(){ /* 打开前摄并验证：两路画面都必须真的在走帧 */
   const st=await gUM({video:{facingMode:{ideal:'user'},width:{ideal:960},height:{ideal:1280}},audio:false});
   dualVid.srcObject=st;try{await dualVid.play()}catch(_){}
@@ -5297,31 +5338,105 @@ async function dualOpen(){
   if(DUAL.busy)return;
   if(S.rec){toast('录制中不能开关双摄');return}
   if(S.switching){toast('镜头切换中，请稍后再试');return}
+  /* ① 原生壳：进原生双摄相机（前后摄像头同时工作，拍照 / 录像）。视频模式下进去就是视频。原生明确说「这台设备不行」才继续往下走网页双摄 */
+  let nativeWhy='';
+  if(window.NDC&&NDC.auto()){
+    const r=await NDC.open({mode:S.mode==='video'?'video':'photo',auto:true});
+    if(!r.fallback)return;
+    nativeWhy='原生双摄不可用（'+r.error+'）';try{plog(nativeWhy+'，改用网页双摄')}catch(_){}
+  }
   if(S.facing!=='environment'){toast('请先切换到后置相机，再开双摄');return}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showDlg('不能使用双摄','此浏览器不能访问摄像头。');return}
-  DUAL.busy=true;toast('正在打开前置摄像头…');let r=null;
+  DUAL.busy=true;DUAL.why=nativeWhy;
+  /* ② 网页同时开前后两路摄像头（一部分安卓手机 / 电脑浏览器允许）；不行再用分时双摄 */
+  toast('正在打开前置摄像头…');let r=null;
   try{r=await dualGrab()}
-  catch(e){DUAL.busy=false;dualStop();await dualRecover();
-    showDlg('前置摄像头打不开',(e&&(e.name==='NotAllowedError'||e.name==='SecurityError')?'没有获得摄像头权限，或前置摄像头被禁用。':'前置摄像头无法打开（可能被别的应用占用，或系统不允许两颗摄像头同时工作）。')+'\n后置相机已恢复。');return}
+  catch(e){dualStop();await dualRecover();const nm=e&&e.name;
+    if(nm==='NotAllowedError'||nm==='SecurityError'){DUAL.busy=false;showDlg('前置摄像头打不开','没有获得摄像头权限，或前置摄像头被禁用。\n后置相机已恢复。');return}
+    if(nm==='NotFoundError'||nm==='OverconstrainedError'){DUAL.busy=false;showDlg('没有前置摄像头','这台设备找不到可用的前置摄像头。\n后置相机已恢复。');return}
+    DUAL.busy=false;return dualSeqStart((DUAL.why?DUAL.why+'；':'')+'前置摄像头无法和后置同时打开（'+(nm||'未知错误')+'）')}
   if(!r.okBack||!r.okFront){
-    r.st.getTracks().forEach(t=>t.stop());dualVid.srcObject=null;DUAL.busy=false;await dualRecover();
-    showDlg('这台设备不允许网页同时开前后摄像头','打开前置后，'+(!r.okBack?'后置画面被系统停掉了':'前置没有出画面')+'。\n\niPhone 的 Safari 目前就是这样：系统的「前后同时拍摄」只开放给原生 App，网页拿不到。已自动恢复为只用后置相机。\n\n要在 iPhone 上真正双摄同录，需要把澄影打包成原生壳（IPA）并接入 AVCaptureMultiCamSession；一部分安卓手机的 Chrome 则可以直接使用。');return}
-  DUAL.st=r.st;DUAL.on=true;DUAL.busy=false;DUAL.bad=0;DUAL.fails=0;dualLayout();mfSync();toast('前后双摄已开启：拖动小窗可移动，轻点小窗放大 / 缩小')}
+    r.st.getTracks().forEach(t=>t.stop());dualVid.srcObject=null;await dualRecover();DUAL.busy=false;
+    return dualSeqStart((DUAL.why?DUAL.why+'；':'')+'打开前置后，'+(!r.okBack?'后置画面被系统停掉了':'前置没有出画面'))}
+  DUAL.st=r.st;DUAL.mode='live';DUAL.on=true;DUAL.busy=false;DUAL.bad=0;DUAL.fails=0;dualLayout();mfSync();toast('前后双摄已开启：拖动小窗可移动，轻点小窗放大 / 缩小')}
+
+/* ③ 分时双摄：设备一次只能开一颗摄像头。开启时先抓一张前置定格；之后每次拍照：留住后置这一帧 → 切前置再抓一张 → 切回后置 → 合成画中画 */
+async function dualSeqGrab(){ /* 切到前置抓一帧，再切回后置 */
+  const L0=(S.lens==='none'||!S.lens)?'main':S.lens;let c=null;
+  /* 整个切换过程里，主画面（预览、拍照、录像）一直用「后置定格画面」，前置的画面不会露出来，也不会被录进视频 */
+  const keep=(V&&V.videoWidth)?snapshotOf(V):null;
+  if(keep){DUAL.keepSnap={c:keep,lens:L0,mir:false};DUAL.keep=true;try{applyPv();dualLayout()}catch(_){}}
+  try{
+    /* 录像中 swap() 不会先放掉旧摄像头；只能开一颗摄像头的设备要先放，否则前置打不开 */
+    if(S.rec&&S.stream){try{S.stream.getTracks().forEach(t=>t.stop());if(V)V.srcObject=null}catch(_){}S.stream=null}
+    await swap('user','main',{freeze:true,fadeMs:120});
+    if(S.facing!=='user'||!V.videoWidth)throw new Error('前置摄像头没有出画面');
+    await dsleep(650);                                   /* 等前置自动曝光 / 白平衡稳定 */
+    c=dualStillFrom(V)}
+  catch(e){DUAL.why=(e&&e.message)||'前置摄像头没有出画面'}
+  finally{
+    try{if(S.facing!=='environment'){if(S.rec&&S.stream){try{S.stream.getTracks().forEach(t=>t.stop());if(V)V.srcObject=null}catch(_){}S.stream=null}
+      await swap('environment',L0,{freeze:true,fadeMs:120})}}catch(_){}
+    DUAL.keep=false;DUAL.keepSnap=null;S.snapOn=false;S.snap=null;try{applyPv();dualLayout()}catch(_){}}
+  if(!c||S.facing!=='environment')return false;
+  DUAL.still=c;DUAL.stillN++;dualStillView();return true}
+async function dualSeqStart(reason){
+  if(DUAL.busy)return;DUAL.busy=true;DUAL.why=reason||'';
+  toast('这台设备一次只能开一颗摄像头：改用「分时双摄」');
+  try{
+    DUAL.poolOff0=S.poolOff;S.poolOff=true;try{poolTeardown()}catch(_){}      /* 镜头预热池会抢摄像头，分时双摄期间关掉 */
+    if(window.LP&&LP.on){DUAL.lpWas=true;try{$('#btnLive').click()}catch(_){}}   /* 实况要连续收画面，和切镜头冲突，先关掉，退出双摄后再开回来 */
+    DUAL.mode='seq';DUAL.on=true;
+    if(!(await dualSeqGrab()))throw new Error(DUAL.why||'前置没有出画面');
+    DUAL.bad=0;DUAL.fails=0;dualLayout();mfSync();
+    toast('分时双摄已开启：拍照时先拍后置、再切前置抓一张合成画中画（多花约 2 秒）；录像时小窗是定格的前置画面，长按小窗可刷新')}
+  catch(e){
+    DUAL.on=false;DUAL.mode='';dualSeqEnd();
+    showDlg('这台设备开不了双摄','前后摄像头不能同时工作，前置摄像头也没能单独打开：'+((e&&e.message)||'')+'\n\n'+(DUAL.why?'详情：'+DUAL.why+'\n\n':'')+'已恢复为只用后置相机。')}
+  finally{DUAL.busy=false;dualLayout();mfSync()}}
+function dualSeqEnd(){
+  DUAL.still=null;DUAL.viewKey='';try{dualStillView()}catch(_){}
+  S.poolOff=DUAL.poolOff0;
+  if(DUAL.lpWas){DUAL.lpWas=false;try{if(window.LP&&!LP.on)$('#btnLive').click()}catch(_){}}}
+/* 分时双摄拍照：包在原来的拍照外面，原来的调色 / 保存 / 入相册流程一点没动（它拿到的是已经合成好的这一帧） */
+{const _tp=takePhoto;takePhoto=async function(){
+  if(!(DUAL.on&&DUAL.mode==='seq')||S.facing!=='environment'||S.busy||S.switching||DUAL.busy)return _tp.apply(this,arguments);
+  DUAL.busy=true;let held=null;const tm=S.timer;
+  try{
+    if(tm)await countdown();
+    try{click()}catch(_){}
+    const c=DUAL.plain();                                /* 先把用户按下快门时看到的后置画面留住 */
+    toast('分时双摄：正在抓前置…');
+    if(await dualSeqGrab())dualDraw(c.getContext('2d'),c.width,c.height);else toast('前置没抓到，这张只有后置画面');
+    held=c}
+  catch(e){toast('分时双摄出错：'+((e&&e.message)||e))}
+  finally{DUAL.busy=false}
+  if(!held)return;
+  DUAL.hold=held;S.timer=false;
+  try{return await _tp.apply(this,arguments)}finally{S.timer=tm;DUAL.hold=null}}}
+/* 分时双摄也能录像：小窗是定格的前置画面（设备一次只能开一颗摄像头，没法实时）；长按小窗可随时刷新前置画面（刷新那一下主画面定格约 2 秒） */
+async function dualSeqRefresh(){
+  if(!(DUAL.on&&DUAL.mode==='seq')||DUAL.busy||S.switching||S.facing!=='environment')return;
+  DUAL.busy=true;toast('正在刷新前置小窗…主画面会定格约 2 秒');
+  try{toast((await dualSeqGrab())?'前置小窗已刷新':'前置没抓到，小窗保持上一张')}catch(e){toast('刷新失败：'+((e&&e.message)||e))}
+  finally{DUAL.busy=false}}
 /* 小窗：拖动（录制中也能拖，录像里的位置同步跟着走）；轻点切换大小 */
 dualBox.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();try{dualBox.setPointerCapture(e.pointerId)}catch(_){}
-  const r=$('#vf').getBoundingClientRect();DUAL.drag={sx:e.clientX,sy:e.clientY,x:DUAL.x,y:DUAL.y,W:r.width,H:r.height,moved:0,t:performance.now()}});
+  const r=$('#vf').getBoundingClientRect();DUAL.drag={sx:e.clientX,sy:e.clientY,x:DUAL.x,y:DUAL.y,W:r.width,H:r.height,moved:0,t:performance.now(),long:false};
+  if(DUAL.mode==='seq'){const d=DUAL.drag;clearTimeout(DUAL.lpT);DUAL.lpT=setTimeout(()=>{if(DUAL.drag===d&&d.moved<8){d.long=true;dualSeqRefresh()}},600)}});
 dualBox.addEventListener('pointermove',e=>{const d=DUAL.drag;if(!d)return;e.stopPropagation();
   const dx=e.clientX-d.sx,dy=e.clientY-d.sy;d.moved=Math.max(d.moved,Math.abs(dx)+Math.abs(dy));
   const g=dualGeom(d.W,d.H),rx=Math.max(1,d.W-g.pw-2*g.m),ry=Math.max(1,d.H-g.ph-2*g.m);
   DUAL.x=Math.min(1,Math.max(0,d.x+dx/rx));DUAL.y=Math.min(1,Math.max(0,d.y+dy/ry));dualLayout()});
-const dualUp=e=>{const d=DUAL.drag;DUAL.drag=null;if(!d)return;e.stopPropagation();
-  if(d.moved<6&&performance.now()-d.t<400){DUAL.wf=DUAL.wf<.35?.42:.3;dualLayout()}};
-dualBox.addEventListener('pointerup',dualUp);dualBox.addEventListener('pointercancel',()=>{DUAL.drag=null});
+const dualUp=e=>{const d=DUAL.drag;DUAL.drag=null;clearTimeout(DUAL.lpT);if(!d)return;e.stopPropagation();
+  if(!d.long&&d.moved<6&&performance.now()-d.t<400){DUAL.wf=DUAL.wf<.35?.42:.3;dualLayout()}};
+dualBox.addEventListener('pointerup',dualUp);dualBox.addEventListener('pointercancel',()=>{DUAL.drag=null;clearTimeout(DUAL.lpT)});
 new ResizeObserver(dualLayout).observe($('#vf'));
 /* 看门狗：翻到前置主画面就关；前摄被系统中断就重新打开（最多几次），重开不了就提示 */
 setInterval(async()=>{
   if(!DUAL.on||DUAL.busy)return;
   if(S.facing==='user'){dualClose('已切到前置相机，双摄已关闭');return}
+  if(DUAL.mode==='seq')return;                           /* 分时双摄没有实时前置画面，不用看门狗重开 */
   const ft=DUAL.st&&DUAL.st.getVideoTracks()[0];
   const bad=!ft||ft.readyState!=='live'||ft.muted;
   DUAL.bad=bad?DUAL.bad+1:0;
@@ -10968,23 +11083,105 @@ const LGN=window.LGN=(()=>{
 
   /* ---------- 交互：点击果冻 + 橘色光；玻璃整块可以往下拉，有黏性，松手弹回 ---------- */
   function jelly(el){el.classList.remove('jel','glw');void el.offsetWidth;el.classList.add('jel','glw');setTimeout(()=>el.classList.remove('jel','glw'),330)}
-  /* 键盘弹出时：界面高度锁定为键盘弹出前的高度（不被挤压），整体按需上移，让输入框刚好露在键盘上方 */
+  /* ===== 键盘弹出时（11.1.5 重写）：页面固定不动，只抬输入框那一行 =====
+     以前：键盘弹出时整个登录页往上顶，顶部的验证码数字条被顶出屏幕，看不到验证码。
+     现在：
+     ① 登录页 / 登录弹窗的高度锁定成键盘弹出前的高度，不被挤压；
+     ② 浏览器把可见区域平移（iPhone Safari 的做法）时，反向平移回来：页面在屏幕上不动，顶部的验证码数字条一直看得见；
+     ③ 禁止页面滚动（overflow:clip + 滚动归零），浏览器没法再把整页卷上去；
+     ④ 当前输入的那一行（手机号 / 邮箱 / 验证码）被键盘盖住时，只把这一行往上抬到刚好露在键盘上方，其它内容不动；被它盖住的行淡出；
+     ⑤ 原生壳（iOS WKWebView / 安卓 WebView）自己量好「键盘盖住了屏幕底部多少」，调用 window.__lucidaKb(CSS 像素) 告诉网页，不用靠猜。 */
+  const KB={native:0,hosts:[],base:innerHeight,lockH:0,raf:0,until:0,pan:'0/0',py:0,wired:false};
+  {const st=document.createElement('style');st.textContent=
+    '.cdm{transition:width .66s cubic-bezier(.34,1.32,.5,1),translate .25s ease}'
+   +'.lgfld{transition:border-color .25s,translate .25s ease,opacity .2s}'
+   +'.lgcov{opacity:0!important;pointer-events:none!important}'
+   +'.lgcode{translate:calc(-50% + var(--lgpx,0px)) var(--lgpy,0px)}'
+   +'html.lgpin,html.lgpin body,html.lgpin .stage,html.lgpin .app{overflow:hidden;overflow:clip}'
+   +'html.lgpin .splash.login,html.lgpin .lgm{translate:var(--lgpx,0px) var(--lgpy,0px)}';
+   document.head.appendChild(st)}
+  window.__lucidaKb=h=>{KB.native=Math.max(0,+h||0);kbKick(900)};
+  const kbField=a=>!!(a&&a.tagName&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&!/^(button|checkbox|radio|range|submit)$/i.test(a.type||''));
+  const kbOn=el=>!!(el&&el.isConnected&&!el.classList.contains('hide')&&el.style.display!=='none'&&(el.id==='splash'?el.classList.contains('login'):el.classList.contains('on')));
+  const kbVH=()=>{const vv=window.visualViewport;return vv?vv.height*(vv.scale||1):innerHeight};
+  const kbHostField=()=>{const a=document.activeElement;return kbField(a)&&KB.hosts.some(h=>h.el.contains(a))?a:null};
+  /* 键盘遮住了屏幕底部多少（CSS 像素）；小于 60 当作没有键盘 */
+  function kbHeight(){const h=Math.max(KB.native,KB.base-Math.min(innerHeight,kbVH()));return h<60?0:h}
+  /* 没有键盘时记下「完整高度」 */
+  function kbRebase(){
+    if(KB.native||kbHostField())return;
+    KB.base=Math.max(innerHeight,kbVH());
+    if(Math.abs(innerHeight-KB.lockH)>40)KB.hosts.forEach(kbRelock);
+  }
+  function kbRelock(h){
+    const el=h.el;if(!el.isConnected||KB.native||kbHostField())return;
+    el.style.height='';el.style.bottom='';fit(el);
+    const H=el.offsetHeight;if(H>=150){el.style.bottom='auto';el.style.height=H+'px';KB.lockH=innerHeight}
+  }
+  function kbPan(px,py){
+    const k=px.toFixed(1)+'/'+py.toFixed(1);if(KB.pan===k)return;
+    KB.pan=k;KB.py=py;const s=document.documentElement.style;s.setProperty('--lgpx',px.toFixed(1)+'px');s.setProperty('--lgpy',py.toFixed(1)+'px');
+  }
+  function kbScroll(){
+    try{
+      if(window.scrollX||window.scrollY)scrollTo(0,0);
+      const se=document.scrollingElement;if(se&&(se.scrollTop||se.scrollLeft)){se.scrollTop=0;se.scrollLeft=0}
+      [document.body,document.querySelector('.stage'),document.getElementById('app')].concat(KB.hosts.map(h=>h.el)).forEach(e=>{if(e&&(e.scrollTop||e.scrollLeft)){e.scrollTop=0;e.scrollLeft=0}});
+    }catch(_){}
+  }
+  /* 只抬当前输入的那一行：量出它「没抬」时的位置，抬到刚好露在键盘上方（再往上不超过顶部安全区） */
+  function kbRows(host,kb,act){
+    const el=host.el,rows=[...el.querySelectorAll('.cdm,.lgfld')],row=act?(act.closest('.cdm')||act.closest('.lgfld')||act):null;
+    const set=(r,v)=>{if(r._kbT!==v){r._kbT=v;r.style.translate=v}};
+    rows.forEach(r=>{if(r!==row){set(r,'none');r.classList.remove('lgcov')}});
+    if(!row)return;
+    if(!kb){set(row,'none');return}
+    const prev=row.style.translate||'none',tr=row.style.transition;
+    row.style.transition='none';row.style.translate='none';
+    const rc=row.getBoundingClientRect(),others=rows.filter(r=>r!==row).map(r=>{const q=r.getBoundingClientRect();return[r,q.top-KB.py,q.bottom-KB.py]});
+    row.style.translate=prev;void row.offsetWidth;row.style.transition=tr;
+    const sat=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat'))||0;
+    const top=rc.top-KB.py,bot=rc.bottom-KB.py;                    /* 「没抬」时在屏幕上的位置（已扣掉页面平移补偿） */
+    const dy=Math.max(0,Math.min(bot-(KB.base-kb-18),top-(sat+10)));
+    set(row,dy>.5?'0 '+(-dy/K).toFixed(1)+'px':'none');
+    const t1=top-dy,b1=bot-dy;
+    others.forEach(o=>o[0].classList.toggle('lgcov',dy>.5&&o[2]>t1&&o[1]<b1));
+  }
+  function kbSync(){
+    const hosts=KB.hosts.filter(h=>kbOn(h.el)),root=document.documentElement;
+    root.classList.toggle('lgpin',hosts.length>0);
+    if(!hosts.length){kbPan(0,0);KB.hosts.forEach(h=>kbRows(h,0,null));return}
+    const act=kbHostField(),fh=act?hosts.find(h=>h.el.contains(act)):null,vv=window.visualViewport;
+    if(!act&&!KB.native)KB.base=Math.max(KB.base,innerHeight,kbVH());
+    kbPan(vv?vv.offsetLeft:0,vv?vv.offsetTop:0);
+    kbScroll();
+    const kb=fh?kbHeight():0;
+    hosts.forEach(h=>kbRows(h,h===fh?kb:0,h===fh?act:null));
+  }
+  function kbKick(ms){
+    KB.until=Math.max(KB.until,performance.now()+ms);
+    if(KB.raf)return;
+    const step=()=>{KB.raf=0;kbSync();if(performance.now()<KB.until)KB.raf=requestAnimationFrame(step)};
+    KB.raf=requestAnimationFrame(step);
+  }
+  function kbWire(){
+    if(KB.wired)return;KB.wired=true;
+    const vv=window.visualViewport,kick=()=>kbKick(700);
+    if(vv){vv.addEventListener('resize',kick);vv.addEventListener('scroll',kick)}
+    addEventListener('resize',()=>{kbRebase();kick()});
+    addEventListener('orientationchange',()=>{setTimeout(()=>{kbRebase();kbKick(700)},350);kick()});
+    document.addEventListener('focusin',e=>{if(kbField(e.target))kbKick(1400)},true);
+    document.addEventListener('focusout',()=>setTimeout(()=>kbKick(700),50),true);
+    addEventListener('scroll',()=>{if(document.documentElement.classList.contains('lgpin'))kbScroll()},true);
+  }
   function kbLock(el){
-    const vv=window.visualViewport;if(!vv)return;
     const H=el.offsetHeight;if(H<150)return;
-    el.style.bottom='auto';el.style.height=H+'px';el.style.transition=(el.style.transition?el.style.transition+',':'')+'translate .25s ease';
-    let cur=0;
-    const upd=()=>{
-      const a=document.activeElement;let sh=0;
-      if(a&&a.tagName==='INPUT'&&el.contains(a)){
-        const t=el.style.transition;el.style.transition='none';el.style.translate='none';
-        const b=a.getBoundingClientRect().bottom;
-        el.style.translate='0 '+(-cur)+'px';void el.offsetWidth;el.style.transition=t;
-        sh=Math.max(0,b+28-(vv.offsetTop+vv.height));
-      }
-      cur=sh;el.style.translate=sh?'0 '+(-sh)+'px':'none';
-    };
-    vv.addEventListener('resize',upd);el.addEventListener('focusin',()=>{setTimeout(upd,60);setTimeout(upd,350)});el.addEventListener('focusout',()=>setTimeout(upd,80));
+    el.style.bottom='auto';el.style.height=H+'px';KB.lockH=innerHeight;
+    if(!KB.hosts.some(h=>h.el===el)){
+      const h={el};KB.hosts.push(h);
+      try{new MutationObserver(()=>kbKick(0)).observe(el,{attributes:true,attributeFilter:['class']})}catch(_){}   /* 登录完成 / 弹窗关闭后撤掉锁定 */
+    }
+    kbWire();kbRebase();kbKick(0);
   }
   /* 按住 / 点击玻璃：从按下的位置和底边「透」出一团光，松手后慢慢散去 */
   /* 页面切到后台 / 键盘弹出时暂停背景光斑，省电省 GPU */
@@ -11097,7 +11294,7 @@ const LGN=window.LGN=(()=>{
       setTimeout(()=>{
         const er=ACC.verify(kind,v,code);
         if(er){setSt('bad');if(er!=='验证码不对'){face.querySelector('.ft span').textContent=er.length>8?'验证码已失效':er;}cm.classList.remove('shake');void cm.offsetWidth;cm.classList.add('shake');buzz([30,40,30]);say(er==='验证码不对'?'':er,true);
-          setTimeout(()=>{cd.value='';say('');setSt('open');try{cd.focus()}catch(_){}paint()},950)}
+          setTimeout(()=>{cd.value='';say('');setSt('open');try{cd.focus({preventScroll:true})}catch(_){}paint()},950)}
         else{setSt('ok');buzz(22);killCode&&killCode();setTimeout(finish,820)}
       },560);
     }
@@ -11111,9 +11308,9 @@ const LGN=window.LGN=(()=>{
     }
     face.addEventListener('click',e=>{
       e.preventDefault();if(st!=='idle')return;
-      if(send()){setSt('open');try{cd.focus()}catch(_){}}
+      if(send()){setSt('open');try{cd.focus({preventScroll:true})}catch(_){}}
     });
-    re.addEventListener('click',e=>{e.preventDefault();if(re.disabled||st!=='open')return;if(send()){paint();try{cd.focus()}catch(_){}}});
+    re.addEventListener('click',e=>{e.preventDefault();if(re.disabled||st!=='open')return;if(send()){paint();try{cd.focus({preventScroll:true})}catch(_){}}});
     go.addEventListener('click',()=>{
       const v=target();
       if(kind==='phone'?!okPhone(v):!okMail(v)){say(kind==='phone'?'请输入 11 位手机号':'请输入正确的邮箱',true);return}
@@ -11615,6 +11812,198 @@ const LGN=window.LGN=(()=>{
   LNB.boot=boot;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));else setTimeout(boot,0);
   document.documentElement.classList.add('lucida-native');
+})();
+
+/* ===== 原生双摄入口（11.1.5）· 苹果原生壳 / 安卓原生壳共用 =====
+   网页里的 getUserMedia 一次只能稳定开一路摄像头，「前后同时拍摄 + 录像」要原生才靠谱。
+   所以原生壳里自带一套「原生双摄相机」（不经过网页）：
+     苹果：AVCaptureMultiCamSession 同时开前后摄像头 → 合成 → AVAssetWriter 录像（带声音）
+     安卓：Camera2 同时开前后摄像头 → OpenGL 合成 → MediaCodec 录像（带声音）
+   界面是原生的（画中画 / 分屏、拍照、录像、手电、前置镜像……），拍完当场写进系统相册。
+   这个脚本是网页这一侧：
+     · 更多设置里加「原生双摄相机」入口行 + 「相机里的双摄按钮用原生双摄」开关；
+     · 相机里原来的双摄按钮（更多功能 → 双摄）在原生壳里直接进原生双摄；原生说「这台设备不行」时，回落到网页自己的分时双摄；
+     · 进原生之前先放掉网页的摄像头（同一时刻系统只让一个相机会话占用摄像头），回来后再打开；
+     · 拍到的照片 / 视频导入澄影相册（系统相册里原生已经存过一份）。
+   纯网页版（没有原生壳）整段直接 return，网页版行为完全不变。
+   接口：苹果 = webkit.messageHandlers.lucida 的 dualCamOpen / dualCamClean；安卓 = window.LucidaAndroid.dualOpen / dualClean（见 android_proj/BRIDGE.md） */
+(function(){
+  const NI=window.__LUCIDA_NATIVE__,AN=window.LucidaAndroid;
+  const H=NI&&window.webkit&&webkit.messageHandlers&&webkit.messageHandlers.lucida;
+  const IOS=!!(NI&&H),AND=!!(AN&&typeof AN.dualOpen==='function');
+  if((!IOS&&!AND)||window.NDC)return;
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(_){return null}};
+  const KEY='lucida.ndc.auto';
+  let info=null;
+  if(AND){try{info=JSON.parse(AN.info())}catch(_){info=null}}
+
+  /* ---------- 这台设备大概率能不能用原生双摄 ---------- */
+  function cap(){
+    if(IOS)return NI.multiCam===true?{ok:true,why:''}:{ok:false,why:'这台 iPhone 不支持前后摄像头同时工作（需要 iPhone XS / XR 及以后的机型）'};
+    const d=info&&info.dual;
+    if(!d)return{ok:false,why:'没有拿到摄像头信息'};
+    if(!d.ok)return{ok:false,why:d.why||'没有找到前置或后置摄像头'};
+    if(d.concurrent===false)return{ok:false,why:'系统不允许前后摄像头同时工作（这台设备的硬件限制）'};
+    return{ok:true,why:''};
+  }
+
+  /* ---------- 和原生通信 ---------- */
+  const bad=(code,msg)=>({ok:false,code,error:msg});
+  let andWait=null,andT=0;
+  /* 安卓：原生双摄界面关闭后，壳会调用 window.__lucidaDualDone(结果) */
+  window.__lucidaDualDone=r=>{const w=andWait;andWait=null;clearTimeout(andT);if(w)w(r&&typeof r==='object'?r:bad('error','原生没有返回结果'))};
+  function andGuard(){
+    /* 保险：壳没回调时不让网页永远卡住（页面隐藏过、又重新可见 6 秒后还没结果 → 当作空结果；启动后 10 秒页面都没被盖住 → 当作启动失败） */
+    let seen=false;const t0=Date.now();
+    const f=()=>{
+      if(document.hidden){seen=true;return}
+      if(!seen)return;
+      document.removeEventListener('visibilitychange',f);clearTimeout(andT);
+      andT=setTimeout(()=>{const w=andWait;andWait=null;if(w)w({ok:true,items:[],note:'没有收到原生结果'})},6000);
+    };
+    document.addEventListener('visibilitychange',f);
+    const chk=setInterval(()=>{
+      if(!andWait){clearInterval(chk);return}
+      if(document.hidden){seen=true;return}
+      if(!seen&&Date.now()-t0>10000){clearInterval(chk);document.removeEventListener('visibilitychange',f);const w=andWait;andWait=null;if(w)w(bad('error','原生双摄界面没有打开'))}
+    },1000);
+  }
+  async function nativeOpen(opts){
+    if(IOS){
+      const r=await H.postMessage(Object.assign({type:'dualCamOpen'},opts));
+      return r&&typeof r==='object'?r:bad('error','原生没有返回结果');
+    }
+    const s=AN.dualOpen(JSON.stringify(opts));
+    if(s!=='ok')return bad('error',String(s).replace(/^err:/,'')||'原生双摄没有启动');
+    return await new Promise(res=>{andWait=res;andGuard()});
+  }
+  function clean(names){
+    try{
+      const arr=(names||[]).filter(Boolean);
+      if(IOS)Promise.resolve(H.postMessage({type:'dualCamClean',names:arr})).catch(()=>{});
+      else AN.dualClean(JSON.stringify(arr));
+    }catch(_){}
+  }
+
+  /* ---------- 拍到的东西导入澄影相册 ---------- */
+  function videoThumb(url){
+    return new Promise(res=>{
+      const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';
+      let done=false;const fin=d=>{if(done)return;done=true;clearTimeout(t);try{v.removeAttribute('src');v.load()}catch(_){}res(d)};
+      const t=setTimeout(()=>fin(null),6000);
+      v.onloadeddata=()=>{try{v.currentTime=Math.min(.1,(v.duration||1)/2)}catch(_){fin(null)}};
+      v.onseeked=()=>{try{const c=document.createElement('canvas');c.width=v.videoWidth||120;c.height=v.videoHeight||120;c.getContext('2d').drawImage(v,0,0);fin(thumbOf(c))}catch(_){fin(null)}};
+      v.onerror=()=>fin(null);
+      v.src=url;
+    });
+  }
+  async function importItems(items){
+    let ph=0,vd=0,fail=0,unsaved=0;const names=[];
+    for(const it of items){
+      names.push(String(it&&it.url||'').split('/').pop());
+      try{
+        if(!it||!it.url)throw new Error('缺少文件地址');
+        const r=await fetch(it.url);if(!r.ok)throw new Error('HTTP '+r.status);
+        const blob=await r.blob(),isV=it.kind==='video';
+        const name=it.name||('澄影双摄_'+stamp()+(isV?'.mp4':'.jpg'));
+        const url=URL.createObjectURL(blob);
+        let thumb=null;
+        if(isV)thumb=await videoThumb(url);
+        else{const bm=await createImageBitmap(blob),c=document.createElement('canvas');c.width=bm.width;c.height=bm.height;c.getContext('2d').drawImage(bm,0,0);thumb=thumbOf(c);if(bm.close)bm.close()}
+        if(!thumb){const c=document.createElement('canvas');c.width=c.height=120;const x=c.getContext('2d');x.fillStyle='#222';x.fillRect(0,0,120,120);thumb=thumbOf(c)}
+        addItem({type:isV?'video':'image',url,name,thumb,_nsaved:true,_ndual:true});   /* _nsaved：原生已经存进系统相册，别再自动存一遍 */
+        if(isV)vd++;else ph++;
+        if(it.saved===false)unsaved++;
+      }catch(e){fail++;try{plog('导入双摄文件失败：'+((e&&e.message)||e))}catch(_){}}
+    }
+    clean(names);
+    const what=[ph?ph+' 张照片':'',vd?vd+' 段视频':''].filter(Boolean).join('、');
+    if(what)toast('双摄：'+what+(unsaved?' 已存入澄影相册（系统相册没写进去，请检查权限）':' 已存入系统相册和澄影相册')+(fail?'；'+fail+' 个没导入成功':''));
+    else if(fail)toast('双摄文件导入失败（已存进系统相册的不受影响）');
+  }
+
+  /* ---------- 打开原生双摄 ---------- */
+  const NDC=window.NDC={
+    platform:IOS?'ios':'android',
+    has:()=>true,
+    ok:()=>cap().ok,
+    why:()=>cap().why,
+    autoPref:()=>LS(KEY)!=='0',
+    auto:()=>cap().ok&&LS(KEY)!=='0',
+    busy:false,
+    clean,
+    /* o = {mode:'photo'|'video', auto:true（来自相机里的双摄按钮，原生说不行就回落到网页方式）}
+       返回 {handled:true} 已经处理（进去过，或已提示出错）；{fallback:true,error} 原生不行，请调用方改用网页双摄 */
+    async open(o){
+      o=o||{};
+      if(NDC.busy)return{handled:true};
+      if(S.rec){toast('正在录像，先停止录像再进入原生双摄');return{handled:true}}
+      if(S.busy||S.switching||(typeof DUAL!=='undefined'&&DUAL.busy)){toast('镜头切换中，请稍后再试');return{handled:true}}
+      NDC.busy=true;
+      let res=null,facing0=S.facing,lens0=(S.lens==='none'||!S.lens)?'main':S.lens,liveWas=false;
+      try{
+        toast('正在进入原生双摄相机…');
+        /* ① 关掉网页自己的双摄 / 实况，放掉网页的摄像头 */
+        try{if(typeof DUAL!=='undefined'&&DUAL.on)dualClose()}catch(_){}
+        liveWas=!!(window.LP&&LP.on);
+        if(liveWas){try{$('#btnLive').click()}catch(_){}}
+        S.switching=true;                                   /* 这段时间别让看门狗 / 变焦去重开摄像头 */
+        try{poolTeardown()}catch(_){}
+        try{freeze(V,lens0,mirrored())}catch(_){}            /* 定格当前画面盖住过渡，不黑屏 */
+        try{if(S.stream)S.stream.getTracks().forEach(t=>t.stop());if(V)V.srcObject=null}catch(_){}
+        await sleep(350);                                    /* 等系统真正放掉摄像头 */
+        /* ② 进原生（返回时原生界面已经关了） */
+        res=await nativeOpen({mode:o.mode==='video'?'video':'photo'});
+      }catch(e){res=bad('error',String((e&&e.message)||e))}
+      /* ③ 网页自己的摄像头拿回来 */
+      S.switching=false;
+      try{await swap(facing0,lens0,{freeze:true,fadeMs:200})}catch(e){}
+      if(liveWas){try{if(window.LP&&!LP.on)$('#btnLive').click()}catch(_){}}
+      NDC.busy=false;
+      /* ④ 结果 */
+      if(res&&res.ok){
+        const items=res.items||[];
+        if(items.length)await importItems(items);
+        return{handled:true,items:items.length};
+      }
+      const code=res&&res.code,msg=(res&&res.error)||'原生双摄没有打开';
+      try{plog('原生双摄：'+code+' '+msg)}catch(_){}
+      if(o.auto&&code==='unsupported')return{fallback:true,error:msg};
+      if(code==='denied')showDlg('没有相机权限','原生双摄需要相机权限（录像的声音还需要麦克风权限）。\n请到系统设置里允许澄影使用相机和麦克风，再试一次。');
+      else showDlg('原生双摄打不开',msg+(code==='unsupported'?'\n\n可以关掉「相机里的双摄按钮用原生双摄」，改用网页自己的双摄（拍照合成画中画）。':''));
+      return{handled:true,error:msg};
+    }
+  };
+
+  /* ---------- 更多设置里的入口 ---------- */
+  const STYLE='#rowNDual,#rowNDualAuto{padding-top:10px;padding-bottom:10px}'
+    +'#rowNDual .mt,#rowNDualAuto .mt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;line-height:1.3}'
+    +'#rowNDual .zsd,#rowNDualAuto .zsd{font-size:12px;opacity:.6;font-weight:400;line-height:1.35}';
+  const CHEV='<svg class="mc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg>';
+  const ICON='<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="3.5"/><rect x="12.6" y="10" width="6" height="6.6" rx="1.6"/><circle cx="7.6" cy="10.6" r="1.2"/></svg>';
+  function buildRows(){
+    const main=document.querySelector('#pMain .minner');if(!main||document.getElementById('rowNDual'))return;
+    const c=cap();
+    const mk=t=>{const d=document.createElement('div');d.className='mcat';d.textContent=t;return d};
+    const lst=document.createElement('div');lst.className='mlist';lst.style.marginBottom='10px';
+    const go=document.createElement('button');go.type='button';go.id='rowNDual';go.className='mrow lit';
+    go.innerHTML=ICON+'<span class="mt">进入原生双摄相机<small class="zsd">'+(IOS?'苹果':'安卓')+'原生相机：前后摄像头同时工作，拍照 / 录像（带声音），画中画或上下分屏。拍完同时存进系统相册和澄影相册。'+(c.ok?'':'（本机可能不支持：'+c.why+'）')+'</small></span>'+CHEV;
+    go.addEventListener('click',()=>{const m=document.getElementById('mClose');if(m)m.click();setTimeout(()=>NDC.open({mode:'photo'}),260)});
+    const sw=document.createElement('button');sw.type='button';sw.id='rowNDualAuto';sw.className='mrow lit'+(NDC.autoPref()?' on':'');
+    sw.innerHTML=ICON+'<span class="mt">相机里的双摄按钮用原生双摄<small class="zsd">开：更多功能里的「双摄」直接进原生双摄相机（推荐；这台设备不支持时自动改用网页双摄）。关：一直用网页自己的双摄（只能拍照合成，录像小窗有限制）。</small></span><span class="msw"></span>';
+    sw.addEventListener('click',()=>{const on=LS(KEY)==='0';LS(KEY,on?'1':'0');sw.classList.toggle('on',on);toast(on?'已开启：双摄按钮进入原生双摄相机':'已关闭：双摄按钮使用网页双摄')});
+    lst.appendChild(go);lst.appendChild(sw);
+    const cats=[...main.querySelectorAll('.mcat')],sup=cats.find(e=>e.textContent.trim()==='支持'),bottom=main.querySelector('.mbottom');
+    const anchor=sup||bottom||null;
+    main.insertBefore(mk('原生双摄相机'),anchor);main.insertBefore(lst,anchor);
+    const st=document.createElement('style');st.textContent=STYLE;document.head.appendChild(st);
+  }
+  function boot(){
+    buildRows();
+    try{const c=cap();plog('原生双摄：'+(IOS?'苹果':'安卓')+(c.ok?'，本机可以尝试前后同时拍摄':'，本机可能不支持（'+c.why+'）')+'；相机里的双摄按钮'+(NDC.autoPref()?'走原生':'走网页'))}catch(_){}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));else setTimeout(boot,0);
 })();
 
 /* ===== 启动 ===== */

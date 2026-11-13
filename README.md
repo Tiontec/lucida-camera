@@ -1,6 +1,6 @@
-# 澄影 · iOS 原生 App 工程（11.1.3）
+# 澄影 · iOS 原生 App 工程（11.1.5）
 
-网页（`Lucida/Resources/web/index.html`，= 手机版 11.1.3 + 原生接口）装进 WKWebView 外壳里，界面和调色算法都还是澄影自己的；
+网页（`Lucida/Resources/web/index.html`，= 手机版 11.1.5 + 原生接口）装进 WKWebView 外壳里，界面和调色算法都还是澄影自己的；
 原生这一层负责网页做不到的事：写入系统相册、真正的实况照片、HEIF / ProRAW 原生拍摄、摄像头检测、原生点按对焦。液态玻璃只用网页自带的那套（11.1.2 起原生玻璃叠层已整体去掉）。
 
 ## 一、用 GitHub 自动打包 IPA（不需要 Mac）

@@ -13,6 +13,9 @@ import AVFoundation
 ///   focus     {x,y,lock,release,label,position,angle}     点按对焦 / 长按锁定 AE·AF（原生设置摄像头对焦点）
 ///   haptic    {style}                                     触感
 ///   probe     {}                                          重新检测设备摄像头
+///   dualCamOpen {mode:"photo"|"video"}                    进入原生双摄相机（前后摄像头同时拍照 / 录像）；关闭后返回
+///                                                         {ok:true,items:[{kind,url,name,saved}]} 或 {ok:false,code:"unsupported"|"denied"|"error",error}
+///   dualCamClean {names:[...]}                            网页导入完后，删掉原生留下的临时文件（names 为空 = 全删双摄文件）
 final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
     weak var host: WebViewController?
     private let io = DispatchQueue(label: "lucida.bridge.io")
@@ -46,9 +49,45 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             g.impactOccurred(); reply(true, nil)
         case "probe":
             reply(DeviceProbe.info(), nil)
+        case "dualCamOpen":
+            openDualCam(mode: (body["mode"] as? String) ?? "photo", reply)
+        case "dualCamClean":
+            let names = (body["names"] as? [String]) ?? []
+            io.async {
+                let fm = FileManager.default
+                let all = (try? fm.contentsOfDirectory(atPath: SchemeHandler.outDir.path)) ?? []
+                for n in all where n.hasPrefix("澄影双摄_") && (names.isEmpty || names.contains(n)) {
+                    try? fm.removeItem(at: SchemeHandler.outDir.appendingPathComponent(n))
+                }
+                reply(true, nil)
+            }
         default:
             reply(nil, "unknown type: \(type)")
         }
+    }
+
+    // MARK: 原生双摄
+    private var dualOpen = false
+    private func openDualCam(mode: String, _ reply: @escaping (Any?, String?) -> Void) {
+        guard let vc = host else { reply(["ok": false, "code": "error", "error": "没有宿主界面"], nil); return }
+        guard !dualOpen else { reply(["ok": false, "code": "error", "error": "原生双摄已经打开"], nil); return }
+        guard DualCamEngine.isSupported else {
+            reply(["ok": false, "code": "unsupported", "error": "这台 iPhone 不支持前后摄像头同时工作（需要 iPhone XS / XR 及以后的机型）"], nil); return
+        }
+        dualOpen = true
+        let d = DualCamViewController()
+        d.startMode = mode == "video" ? .video : .photo
+        d.modalPresentationStyle = .fullScreen
+        d.onFinish = { [weak self] items, code, msg in
+            self?.dualOpen = false
+            if let code = code { reply(["ok": false, "code": code, "error": msg ?? ""], nil); return }
+            let arr: [[String: Any]] = items.map {
+                ["kind": $0.kind, "url": "lucida://file/" + $0.url.lastPathComponent,
+                 "name": $0.url.lastPathComponent, "saved": $0.saved]
+            }
+            reply(["ok": true, "items": arr], nil)
+        }
+        vc.present(d, animated: true)
     }
 
     // MARK: 分块上传
