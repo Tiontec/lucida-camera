@@ -1,0 +1,78 @@
+澄影非商业开源许可协议 1.0
+Lucida Non-Commercial Open Source License 1.0
+
+著作权人 / Copyright Holder：雾峥奕
+适用项目：澄影（Lucida）相关工程，包括 iOS 工程、Android 工程、网页（HTML）及其全部源码、资源与文档。
+
+────────────────────────────────────────
+一、许可授予
+────────────────────────────────────────
+在遵守本协议全部条款的前提下，著作权人授予你一项全球范围、免费、非独占的许可，允许你：
+
+1. 复制、修改、合并、发布本项目及其衍生作品；
+2. 在非商业场景下使用本项目，包括个人学习、研究、教学、评测、开源分享；
+3. 将本项目打包、签名、安装到你自己或他人的设备上使用。
+
+────────────────────────────────────────
+二、强制义务（必须遵守）
+────────────────────────────────────────
+
+1. 保留署名
+   任何复制、修改、分发行为，都必须完整保留原始著作权声明，并在显著位置标注：
+   「本项目基于 雾峥奕 的 澄影（Lucida）二次修改」
+   不得删除、遮蔽、伪造原作者信息。
+
+2. 相同方式共享
+   你修改本项目后产生的衍生作品，必须继续采用本协议发布，
+   不得改为其他更宽松的协议，也不得附加额外限制。
+
+3. 附带协议
+   分发本项目或其衍生作品时，必须附带本协议的完整文本。
+
+────────────────────────────────────────
+三、明确禁止（违反即侵权）
+────────────────────────────────────────
+
+1. 禁止商业使用
+   不得将本项目或其衍生作品用于任何以营利为目的的场景，
+   包括但不限于：收费 App、内购、广告变现、付费下载、
+   商业定制开发、作为商业产品的一部分销售。
+
+2. 禁止倒卖
+   不得以任何形式出售、转售、倒卖本项目或其衍生作品，
+   包括但不限于：将安装包、源码、工程文件在任何平台标价出售，
+   或以「代打包」「代开发」名义收取费用后交付本项目。
+
+3. 禁止冒充
+   不得声称本项目由你原创，不得使用原作者名义或近似名义发布。
+
+4. 禁止用于违法违规用途。
+
+────────────────────────────────────────
+四、免责声明
+────────────────────────────────────────
+本项目按「现状」提供，不附带任何明示或默示的担保，
+包括但不限于对适销性、特定用途适用性和非侵权性的担保。
+在任何情况下，著作权人均不对因使用本项目产生的任何直接、
+间接、偶然、特殊或后果性损害承担责任。
+
+使用本项目即表示你已阅读并同意本协议全部条款。
+如不同意，请立即停止使用并删除全部副本。
+
+────────────────────────────────────────
+English Summary (not legally binding, for reference)
+────────────────────────────────────────
+You are free to use, copy, modify and redistribute this project
+for NON-COMMERCIAL purposes only, provided that:
+  (a) you keep the original attribution to 「雾峥奕」and mark your
+      derivative work as based on Lucida;
+  (b) any derivative work is released under this same license;
+  (c) you include this license text with any distribution.
+
+COMMERCIAL USE IS PROHIBITED. RESELLING IS PROHIBITED.
+This includes selling the app, the source code, or the built
+packages, and using them as part of a paid product or service.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+Copyright (c) 2026 雾峥奕. All rights reserved except as granted above.
