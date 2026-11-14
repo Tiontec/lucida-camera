@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>澄影 Lucida</title>
@@ -3468,13 +3468,14 @@ function loop(t){
 }
 
 /* ===== v3.3.4：镜头检测 / 长焦切换 / 变焦放大取景框 / 版本更新 ===== */
-const APP_VER='11.1.6';
+const APP_VER='11.1.7';
 try{const av=$('#aboutVer');if(av)av.textContent='LUCIDA · 版本 '+APP_VER+(window.LUCIDA_WATCH?' · 手表版':'')}catch(e){}
 const UPDATES=[
- {v:'11.1.6',d:'2026年11月14日',items:[
+ {v:'11.1.7',d:'2026年11月14日',items:[
    '<b>登录验证码不再被键盘顶走：</b>输入验证码时整个页面不再往上顶——页面固定不动，顶部的验证码数字条一直看得见；键盘太高时只有输入框那一行往上抬到刚好露在键盘上方，被它盖住的行淡出。登录页和「更多设置 → 登录」弹窗都一样；苹果 / 安卓原生壳也配合锁住了系统自己的顶起（原生壳把键盘高度告诉网页）。',
    '<b>双摄（前后摄像头同时拍摄）：</b>苹果 / 安卓原生 App 里，「更多功能 → 双摄」直接进入原生双摄相机——原生代码同时打开前后摄像头，拍照、录像（带声音）都是原生合成的画中画 / 上下分屏，拍完同时存进系统相册和澄影相册。更多设置里新增「原生双摄相机」入口和「相机里的双摄按钮用原生双摄」开关。这台设备不支持时自动改用网页双摄。',
    '<b>网页双摄也能录像：</b>设备一次只能开一颗摄像头时用「分时双摄」——拍照先拍后置、瞬间切前置抓一帧再合成画中画；录像小窗是定格的前置画面，长按小窗可刷新。有小窗要合成时录像不再走「直录」，所以录像里一定带小窗。',
+   '<b>自动适配屏幕比例：</b>打开相机时自动检测屏幕比例（Pro Max 这类很高的屏也一样），锁定页面缩放，防止系统把整页「缩小以适应」导致界面变小；取景画面只做等比铺满、不再拉伸压扁，取景框比例随屏幕重新计算。',
    '<b>4K 录像防闪退（苹果 / 安卓原生壳）：</b>整段录像先攒在网页内存里，4K 画布录制又很吃内存，系统把网页进程回收时应用就闪退。现在：4K 在需要画布合成时（放大 / 前置镜像 / 调色）改为 2560 长边录制，真 4K 请走直录；录像体积到内存安全上限（4K 约 500MB、1080 约 1.1GB）自动停止并保存；安卓壳网页进程被回收时不再退出应用，会自动重建网页并恢复；安卓壳申请了大内存堆。',
    '<b>原生双摄：</b>加入变焦滑动转盘（和主页面一样：左右拖动、带惯性、点读数回 1×、点刻度直接跳；转盘控制当前主画面的那颗摄像头，各记各的倍数）；苹果原生双摄新增「片门全开」开关（前后摄都用 4:3 的最大可同时工作规格，成品 3:4，拍照 / 录像都生效；这台设备不支持时自动退回）；安卓原生双摄修复「只能录 1 秒」（录音编码器输出没有及时取走导致整条录像管线卡死）；安卓壳修复带刘海屏机型上整体下移、底部被挡。',
  ]},
@@ -11821,6 +11822,38 @@ const LGN=window.LGN=(()=>{
   LNB.boot=boot;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));else setTimeout(boot,0);
   document.documentElement.classList.add('lucida-native');
+})();
+
+/* ===== 11.1.6 自动适配屏幕：不同机型（含 Pro Max 这类很高的屏）打开相机时，界面和取景比例都正常 ===== */
+(function(){
+  const meta=document.querySelector('meta[name=viewport]');
+  const st=document.createElement('style');
+  /* 取景画面只许「等比铺满」，绝不拉伸；取景框的比例由 layoutVF 按屏幕算 */
+  st.textContent='.pv,#pnVid{object-fit:cover!important}';
+  document.head.appendChild(st);
+  let fixes=0;
+  function check(){
+    try{
+      const root=document.documentElement;
+      const sw=Math.min(screen.width,screen.height),sh=Math.max(screen.width,screen.height);
+      const port=innerHeight>=innerWidth,W=port?sw:sh;
+      /* 页面比屏幕还宽 = 系统把整页「缩小以适应」了（有个元素超出屏幕），界面就会整体缩小：锁死视口为屏幕宽度 */
+      if(meta&&W>0&&innerWidth>W+1&&fixes<4){
+        fixes++;
+        meta.setAttribute('content','width='+W+',initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover');
+      }
+      root.style.setProperty('--vw',innerWidth+'px');
+      root.style.setProperty('--vh',innerHeight+'px');
+      const ar=Math.max(innerWidth,innerHeight)/Math.min(innerWidth,innerHeight);
+      root.classList.toggle('tall',ar>=2.05);
+      window.__fit={iw:innerWidth,ih:innerHeight,sw:screen.width,sh:screen.height,ar:Math.round(ar*1000)/1000,fixes:fixes};
+      if(typeof layoutVF==='function')layoutVF();
+    }catch(e){}
+  }
+  addEventListener('resize',check);
+  addEventListener('orientationchange',()=>setTimeout(check,300));
+  if(window.visualViewport)visualViewport.addEventListener('resize',check);
+  check();setTimeout(check,400);setTimeout(check,1500);
 })();
 
 /* ===== 原生双摄入口（11.1.5）· 苹果原生壳 / 安卓原生壳共用 =====

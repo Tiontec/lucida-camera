@@ -14,6 +14,11 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        webView?.frame = view.bounds                // 网页始终铺满整个窗口（不同机型尺寸不同）
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
@@ -43,6 +48,10 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         wv.scrollView.backgroundColor = .black
         wv.scrollView.contentInsetAdjustmentBehavior = .never   // 安全区交给网页的 env(safe-area-inset-*)
         wv.scrollView.bounces = false
+        wv.scrollView.minimumZoomScale = 1          // 锁死缩放：不让系统把整页「缩小以适应」
+        wv.scrollView.maximumZoomScale = 1
+        wv.scrollView.zoomScale = 1
+        wv.scrollView.pinchGestureRecognizer?.isEnabled = false
         wv.scrollView.isScrollEnabled = false
         wv.scrollView.showsHorizontalScrollIndicator = false
         wv.scrollView.showsVerticalScrollIndicator = false
