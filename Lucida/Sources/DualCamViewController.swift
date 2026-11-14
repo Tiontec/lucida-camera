@@ -32,6 +32,12 @@ final class DualCamViewController: UIViewController {
     private let tabVideo = UIButton(type: .system)
     private let toast = UILabel()
     private let spinner = UIActivityIndicatorView(style: .large)
+    private let dial = ZoomDialView()
+    private var ratioC: NSLayoutConstraint?
+    private var fullBtn: UIButton?
+    private var switching = false
+    /// 片门全开（前后摄都用 4:3 整块传感器的最大规格；成品是 3:4）。记住上次的选择。
+    private var fullSensor = UserDefaults.standard.bool(forKey: "lucida.dual.fullSensor")
 
     override var prefersStatusBarHidden: Bool { true }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .portrait }
@@ -50,7 +56,7 @@ final class DualCamViewController: UIViewController {
             guard videoOK else { self.finish(code: "denied", msg: "没有相机权限"); return }
             self.engine.sessionQueue.async {
                 do {
-                    try self.engine.configure(wantAudio: audioOK)
+                    try self.engine.configure(wantAudio: audioOK, fullSensor: self.fullSensor)
                     DispatchQueue.main.async { self.attachPreviews(); self.engine.start() }
                 } catch let e as DualError {
                     switch e {
@@ -92,8 +98,9 @@ final class DualCamViewController: UIViewController {
         stage.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stage)
         // 9:16 取景区，贴着顶部居中（高屏幕下方留给控制区）
-        let ratio = stage.heightAnchor.constraint(equalTo: stage.widthAnchor, multiplier: 16.0 / 9.0)
+        let ratio = stage.heightAnchor.constraint(equalTo: stage.widthAnchor, multiplier: fullSensor ? 4.0 / 3.0 : 16.0 / 9.0)
         ratio.priority = .required
+        ratioC = ratio
         let wMax = stage.widthAnchor.constraint(equalTo: view.widthAnchor)
         wMax.priority = .defaultHigh
         let hMax = stage.heightAnchor.constraint(lessThanOrEqualTo: view.heightAnchor, constant: -150)
@@ -126,6 +133,10 @@ final class DualCamViewController: UIViewController {
         top.addArrangedSubview(roundBtn("arrow.triangle.2.circlepath", #selector(swapMain)))
         top.addArrangedSubview(roundBtn("arrow.left.and.right.righttriangle.left.righttriangle.right", #selector(toggleMirror)))
         top.addArrangedSubview(roundBtn("bolt.fill", #selector(toggleTorch)))
+        let fb = roundBtn("aspectratio", #selector(toggleFullSensor))
+        fullBtn = fb
+        top.addArrangedSubview(fb)
+        paintFull()
 
         timerLabel.text = "● 00:00"
         timerLabel.textColor = .white
@@ -189,13 +200,26 @@ final class DualCamViewController: UIViewController {
             thumbBtn.widthAnchor.constraint(equalToConstant: 48), thumbBtn.heightAnchor.constraint(equalToConstant: 48)
         ])
 
+        dial.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(dial)
+        NSLayoutConstraint.activate([
+            dial.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            dial.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            dial.bottomAnchor.constraint(equalTo: bottom.topAnchor, constant: 0),
+            dial.heightAnchor.constraint(equalToConstant: 64)
+        ])
+        dial.onZoom = { [weak self] z, _ in
+            guard let self = self else { return }
+            self.engine.setZoom(back: self.engine.layout.backIsMain, z)
+        }
+
         toast.textColor = .white; toast.font = .systemFont(ofSize: 14, weight: .medium)
         toast.backgroundColor = UIColor(white: 0, alpha: 0.6); toast.textAlignment = .center
         toast.layer.cornerRadius = 14; toast.clipsToBounds = true; toast.alpha = 0; toast.numberOfLines = 2
         toast.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(toast)
         NSLayoutConstraint.activate([
-            toast.centerXAnchor.constraint(equalTo: view.centerXAnchor), toast.bottomAnchor.constraint(equalTo: bottom.topAnchor, constant: -8),
+            toast.centerXAnchor.constraint(equalTo: view.centerXAnchor), toast.bottomAnchor.constraint(equalTo: dial.topAnchor, constant: -6),
             toast.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, constant: -40)
         ])
         spinner.color = .white; spinner.center = view.center
@@ -231,6 +255,14 @@ final class DualCamViewController: UIViewController {
         pipHolder.layer.addSublayer(fl)
         ready = true
         layoutPreviews()
+        syncDial()
+    }
+
+    /// 转盘控制「当前主画面」的那颗摄像头；换主画面 / 换规格后，转盘跟着换成它的范围和倍数
+    private func syncDial() {
+        let back = engine.layout.backIsMain
+        let (lo, hi) = engine.zoomRange(back: back)
+        dial.setRange(min: lo, max: hi, current: engine.currentZoom(back: back))
     }
 
     /// 预览的摆放和成品里的摆放用同一份 DualLayout 算出来
@@ -284,7 +316,7 @@ final class DualCamViewController: UIViewController {
     @objc private func swapMain() {
         var L = engine.layout
         L.backIsMain.toggle()
-        engine.layout = L; layoutPreviews()
+        engine.layout = L; layoutPreviews(); syncDial()
     }
 
     @objc private func toggleMirror() {
@@ -292,6 +324,41 @@ final class DualCamViewController: UIViewController {
         L.mirrorFront.toggle()
         engine.layout = L
         say(L.mirrorFront ? "前置镜像：开（和预览一致）" : "前置镜像：关")
+    }
+
+    private func paintFull() {
+        fullBtn?.tintColor = fullSensor ? .systemYellow : .white
+    }
+
+    @objc private func toggleFullSensor() {
+        guard !engine.isRecording else { say("录像中不能切换片门全开"); return }
+        guard ready, !switching else { return }
+        let target = !fullSensor
+        switching = true; ready = false
+        spinner.startAnimating()
+        engine.reconfigure(fullSensor: target) { [weak self] err in
+            guard let self = self else { return }
+            self.switching = false
+            self.spinner.stopAnimating()
+            let applied = err == nil ? target : self.fullSensor
+            self.fullSensor = applied
+            UserDefaults.standard.set(applied, forKey: "lucida.dual.fullSensor")
+            self.applyStageRatio()
+            self.attachPreviews()
+            self.paintFull()
+            if let e = err { self.say("片门全开没能打开：\(e)") }
+            else { self.say(applied ? "片门全开：开（4:3）\(self.engine.formatInfo)" : "片门全开：关（9:16）") }
+        }
+    }
+
+    /// 取景区比例：普通 9:16，片门全开 3:4
+    private func applyStageRatio() {
+        ratioC?.isActive = false
+        let r = stage.heightAnchor.constraint(equalTo: stage.widthAnchor, multiplier: fullSensor ? 4.0 / 3.0 : 16.0 / 9.0)
+        r.priority = .required
+        r.isActive = true
+        ratioC = r
+        view.layoutIfNeeded()
     }
 
     private var torchOn = false

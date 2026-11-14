@@ -54,6 +54,14 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private var frontPreviewConn: AVCaptureConnection?
     /// 成品画面尺寸（竖屏，宽 × 高）
     private(set) var canvas = CGSize(width: 720, height: 1280)
+    /// 片门全开：前后摄都改用 4:3 的最大「可同时工作」规格，成品画面是 3:4（不再裁成 9:16）
+    private(set) var fullSensor = false
+    private var wantAudioSaved = false
+    /// 当前实际用的规格说明（给界面提示用）
+    private(set) var formatInfo = ""
+    // 每个摄像头各记各的变焦倍数
+    private(set) var backZoom: CGFloat = 1
+    private(set) var frontZoom: CGFloat = 1
 
     // 最新一帧（数据队列写、其它线程读）
     private let lock = NSLock()
@@ -86,7 +94,9 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     static var isSupported: Bool { AVCaptureMultiCamSession.isMultiCamSupported }
 
     /// 在 sessionQueue 上调用。成功返回 nil；失败抛 DualError。
-    func configure(wantAudio: Bool) throws {
+    func configure(wantAudio: Bool, fullSensor: Bool = false) throws {
+        self.fullSensor = fullSensor; wantAudioSaved = wantAudio
+        backZoom = 1; frontZoom = 1
         guard AVCaptureMultiCamSession.isMultiCamSupported else {
             throw DualError.unsupported("这台 iPhone 不支持前后摄像头同时工作（需要 iPhone XS / XR 及以后的机型）")
         }
@@ -96,7 +106,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         }
         backDevice = back; frontDevice = front
         // 从高到低试三档规格，直到系统说「撑得住」（hardwareCost / systemPressureCost ≤ 1）
-        let tiers: [Int32] = [1920, 1280, 640]
+        // 片门全开：从传感器全幅一路往下找 4:3 的规格；普通模式沿用 1920 / 1280 / 640 三档
+        let tiers: [Int32] = fullSensor ? [4224, 3264, 2592, 1920, 1280, 640] : [1920, 1280, 640]
         var lastWhy = "系统不允许这两颗摄像头同时以可用规格工作"
         for maxW in tiers {
             resetSession()
@@ -129,7 +140,9 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             guard dim.width <= maxW else { continue }
             guard f.videoSupportedFrameRateRanges.contains(where: { $0.maxFrameRate >= 30 && $0.minFrameRate <= 30 }) else { continue }
             let is169 = abs(Double(dim.width) / Double(dim.height) - 16.0 / 9.0) < 0.02
-            let score = Int(dim.width) + (is169 ? 100_000 : 0)
+            let is43 = abs(Double(dim.width) / Double(dim.height) - 4.0 / 3.0) < 0.02
+            let pref = fullSensor ? is43 : is169          // 片门全开偏好 4:3（整块传感器），否则偏好 16:9
+            let score = Int(dim.width) + (pref ? 100_000 : 0)
             if score > bestScore { bestScore = score; best = f }
         }
         return best
@@ -202,10 +215,15 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 if session.canAddConnection(ac) { session.addConnection(ac); hasAudio = true }
             }
         }
-        // 成品尺寸：后置主画面竖过来后的尺寸，最大 1080×1920
+        // 成品尺寸：后置主画面竖过来后的尺寸。普通模式最大 1080×1920；片门全开是 3:4，长边最大 2880
         let dim = CMVideoFormatDescriptionGetDimensions(bf.formatDescription)
-        let w = CGFloat(min(dim.height, 1080)), h = CGFloat(min(dim.width, 1920))
+        let fdim = CMVideoFormatDescriptionGetDimensions(ff.formatDescription)
+        var w = CGFloat(dim.height), h = CGFloat(dim.width)
+        if fullSensor {
+            let k = min(1, 2880 / max(w, h)); w *= k; h *= k
+        } else { w = min(w, 1080); h = min(h, 1920) }
         canvas = CGSize(width: (w / 2).rounded() * 2, height: (h / 2).rounded() * 2)
+        formatInfo = "后置 \(dim.width)×\(dim.height)，前置 \(fdim.width)×\(fdim.height)"
     }
 
     private func applyPreviewMirror() {
@@ -213,6 +231,58 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         lock.lock(); let m = _layout.mirrorFront; lock.unlock()
         c.automaticallyAdjustsVideoMirroring = false
         c.isVideoMirrored = m
+    }
+
+    // MARK: - 变焦
+
+    /// 该摄像头在当前规格下能用的倍数范围（最大只给到 10×，再大画面已经没法看了）
+    func zoomRange(back: Bool) -> (CGFloat, CGFloat) {
+        guard let d = back ? backDevice : frontDevice else { return (1, 1) }
+        let lo = d.minAvailableVideoZoomFactor
+        let hi = min(d.activeFormat.videoMaxZoomFactor, d.maxAvailableVideoZoomFactor, 10)
+        return (max(1, lo), max(max(1, lo), hi))
+    }
+
+    func currentZoom(back: Bool) -> CGFloat { back ? backZoom : frontZoom }
+
+    /// 设置变焦倍数（任意线程调用；实际在 sessionQueue 上改）
+    func setZoom(back: Bool, _ z: CGFloat) {
+        let (lo, hi) = zoomRange(back: back)
+        let v = min(hi, max(lo, z))
+        if back { backZoom = v } else { frontZoom = v }
+        sessionQueue.async { self.applyZoom(back: back, v) }
+    }
+
+    private func applyZoom(back: Bool, _ z: CGFloat) {
+        guard let d = back ? backDevice : frontDevice else { return }
+        let (lo, hi) = zoomRange(back: back)
+        do {
+            try d.lockForConfiguration()
+            d.videoZoomFactor = min(hi, max(lo, z))
+            d.unlockForConfiguration()
+        } catch { /* 变焦失败不影响取景 */ }
+    }
+
+    // MARK: - 切换「片门全开」
+
+    /// 停掉会话 → 按新规格重配 → 重新开始。完成时回到主线程（出错时 error 不为空，已退回原来的设置）。
+    func reconfigure(fullSensor full: Bool, completion: @escaping (String?) -> Void) {
+        sessionQueue.async {
+            let old = self.fullSensor
+            if self.session.isRunning { self.session.stopRunning() }
+            self.lock.lock(); self.lastBack = nil; self.lastFront = nil; self.lock.unlock()
+            do {
+                try self.configure(wantAudio: self.wantAudioSaved, fullSensor: full)
+                self.session.startRunning()
+                DispatchQueue.main.async { completion(nil) }
+            } catch {
+                // 新规格不行：退回原来的
+                let msg = (error as? DualError)?.message ?? error.localizedDescription
+                _ = try? self.configure(wantAudio: self.wantAudioSaved, fullSensor: old)
+                self.session.startRunning()
+                DispatchQueue.main.async { completion(msg) }
+            }
+        }
     }
 
     func start() { sessionQueue.async { if !self.session.isRunning { self.session.startRunning() } } }
