@@ -44,7 +44,7 @@ final class DualBackdrop: UIVisualEffectView {
 // MARK: - 分段选择
 
 final class GlassSegmented: UIControl {
-    private(set) var selected = 0
+    private(set) var selectedIndex = 0
     var onChange: ((Int) -> Void)?
     var glass = false { didSet { restyle() } }
     private let bg = DualBackdrop()
@@ -53,7 +53,7 @@ final class GlassSegmented: UIControl {
 
     init(items: [String], selected: Int = 0) {
         super.init(frame: .zero)
-        self.selected = selected
+        self.selectedIndex = selected
         bg.capsule = true; thumb.capsule = true
         addSubview(bg); addSubview(thumb)
         for t in items {
@@ -69,7 +69,7 @@ final class GlassSegmented: UIControl {
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 34) }
 
     func select(_ i: Int, animated: Bool = true) {
-        selected = max(0, min(labels.count - 1, i))
+        selectedIndex = max(0, min(labels.count - 1, i))
         restyleLabels()
         UIView.animate(withDuration: animated ? 0.28 : 0, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0.2, options: [.beginFromCurrentState]) { self.layoutThumb() }
     }
@@ -80,12 +80,12 @@ final class GlassSegmented: UIControl {
         restyleLabels()
     }
     private func restyleLabels() {
-        for (i, l) in labels.enumerated() { l.textColor = i == selected ? .white : UIColor(white: 1, alpha: 0.7) }
+        for (i, l) in labels.enumerated() { l.textColor = i == selectedIndex ? .white : UIColor(white: 1, alpha: 0.7) }
     }
     private func layoutThumb() {
         guard !labels.isEmpty else { return }
         let w = (bounds.width - 6) / CGFloat(labels.count)
-        thumb.frame = CGRect(x: 3 + w * CGFloat(selected), y: 3, width: w, height: bounds.height - 6)
+        thumb.frame = CGRect(x: 3 + w * CGFloat(selectedIndex), y: 3, width: w, height: bounds.height - 6)
     }
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -97,7 +97,7 @@ final class GlassSegmented: UIControl {
     @objc private func tap(_ g: UITapGestureRecognizer) {
         let w = (bounds.width - 6) / CGFloat(labels.count)
         let i = max(0, min(labels.count - 1, Int((g.location(in: self).x - 3) / w)))
-        if i != selected { select(i); onChange?(i); sendActions(for: .valueChanged) }
+        if i != selectedIndex { select(i); onChange?(i); sendActions(for: .valueChanged) }
     }
 }
 
