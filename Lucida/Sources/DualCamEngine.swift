@@ -3,7 +3,7 @@ import AVFoundation
 import CoreImage
 import ImageIO
 
-/// 原生双摄引擎（11.1.8 重写）：AVCaptureMultiCamSession 同时开前后摄像头（可选麦克风），
+/// 原生双摄引擎（11.1.8 重写，11.2.0 扩展）：AVCaptureMultiCamSession 同时开前后摄像头（可选麦克风），
 /// 每一帧用 CoreImage 合成「画中画 / 上下分屏」+ 调色，同一份合成结果用来：
 ///   · 预览（AVSampleBufferDisplayLayer，所见即所得：小窗圆角、边框、调色都在预览里）
 ///   · 拍照（JPEG / HEIF）
@@ -99,7 +99,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         set { lock.lock(); _layout = newValue; lock.unlock() }
     }
 
-    var grade: GradeState { DualSettings.shared.grade }
+    var gradeBack: GradeState { DualSettings.shared.gradeBack }
+    var gradeFront: GradeState { DualSettings.shared.gradeFront }
     var liveEnabled = false
 
     private let ci = CIContext(options: [.cacheIntermediates: false, .workingColorSpace: NSNull()])
@@ -109,6 +110,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private var pvPool: CVPixelBufferPool?
     private var livePool: CVPixelBufferPool?
     private var pvFrameN = 0
+    private var previewN = 0
 
     // 录像
     private var writer: AVAssetWriter?
@@ -169,6 +171,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                     try build(back: back, front: front, spec: s, wantAudio: wantAudio)
                     if session.hardwareCost <= 1.0 && session.systemPressureCost <= 1.0 {
                         spec = s
+                        watchPressure()
                         backZoom = 1; frontZoom = 1
                         if s.ultraWide { backZoom = 0.5 }
                         if s == w { return "" }
@@ -396,6 +399,120 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         d.unlockForConfiguration()
     }
 
+    // MARK: - 对焦 / 曝光
+
+    private func dev(_ back: Bool) -> AVCaptureDevice? { back ? backDevice : frontDevice }
+
+    /// 主画面里某点（0…1，已按取景框裁切后的坐标）→ 该摄像头传感器的对焦点（横屏坐标）
+    func devicePoint(back: Bool, nx: CGFloat, ny: CGFloat, rectAspect: CGFloat) -> CGPoint {
+        var x = nx
+        if !back && layout.mirrorFront { x = 1 - x }
+        guard let d = dev(back) else { return CGPoint(x: 0.5, y: 0.5) }
+        let dim = CMVideoFormatDescriptionGetDimensions(d.activeFormat.formatDescription)
+        let sw = CGFloat(dim.height), sh = CGFloat(dim.width)          // 竖屏后的源尺寸
+        let srcA = sw / sh
+        var vw: CGFloat = 1, vh: CGFloat = 1
+        if rectAspect > srcA { vh = srcA / rectAspect } else { vw = rectAspect / srcA }
+        let sx = 0.5 + (x - 0.5) * vw, sy = 0.5 + (ny - 0.5) * vh
+        return CGPoint(x: min(1, max(0, sy)), y: min(1, max(0, 1 - sx)))
+    }
+
+    /// 对焦 + 测光到某点；lock = true 时锁定对焦和曝光
+    func focus(back: Bool, at p: CGPoint, lock: Bool) {
+        sessionQueue.async {
+            guard let d = self.dev(back) else { return }
+            do {
+                try d.lockForConfiguration()
+                if d.isFocusPointOfInterestSupported {
+                    d.focusPointOfInterest = p
+                    if d.isFocusModeSupported(lock ? .autoFocus : .continuousAutoFocus) { d.focusMode = lock ? .autoFocus : .continuousAutoFocus }
+                }
+                if d.isExposurePointOfInterestSupported {
+                    d.exposurePointOfInterest = p
+                    if d.isExposureModeSupported(lock ? .autoExpose : .continuousAutoExposure) { d.exposureMode = lock ? .autoExpose : .continuousAutoExposure }
+                }
+                d.unlockForConfiguration()
+                if lock {
+                    // 对完焦、测完光后再锁定
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.7) {
+                        try? d.lockForConfiguration()
+                        if d.isFocusModeSupported(.locked) { d.focusMode = .locked }
+                        if d.isExposureModeSupported(.locked) { d.exposureMode = .locked }
+                        d.unlockForConfiguration()
+                    }
+                }
+            } catch {}
+        }
+    }
+
+    func resetFocus(back: Bool) {
+        sessionQueue.async {
+            guard let d = self.dev(back) else { return }
+            try? d.lockForConfiguration()
+            if d.isFocusModeSupported(.continuousAutoFocus) { d.focusMode = .continuousAutoFocus }
+            if d.isExposureModeSupported(.continuousAutoExposure) { d.exposureMode = .continuousAutoExposure }
+            d.setExposureTargetBias(0, completionHandler: nil)
+            d.unlockForConfiguration()
+        }
+    }
+
+    func biasRange(back: Bool) -> (Float, Float) {
+        guard let d = dev(back) else { return (-2, 2) }
+        return (max(-4, d.minExposureTargetBias), min(4, d.maxExposureTargetBias))
+    }
+
+    func setBias(back: Bool, _ v: Float) {
+        sessionQueue.async {
+            guard let d = self.dev(back) else { return }
+            try? d.lockForConfiguration()
+            // 曝光已锁定时，先让它重新收敛一次再自动锁回，否则曝光补偿不生效
+            if d.exposureMode == .locked, d.isExposureModeSupported(.autoExpose) { d.exposureMode = .autoExpose }
+            d.setExposureTargetBias(v, completionHandler: nil)
+            d.unlockForConfiguration()
+        }
+    }
+
+    // MARK: - 过热 / 系统压力：自动降到 30 帧，保持流畅不卡死
+
+    /// 系统压力或温度升高、已自动降帧时回调（主线程）
+    var onPressure: ((String) -> Void)?
+    private var pressureObs: [NSKeyValueObservation] = []
+    private var thermalObs: NSObjectProtocol?
+    private var throttled = false
+
+    private func watchPressure() {
+        pressureObs.removeAll()
+        for d in [backDevice, frontDevice].compactMap({ $0 }) {
+            pressureObs.append(d.observe(\.systemPressureState, options: [.new]) { [weak self] dev, _ in
+                let lv = dev.systemPressureState.level
+                if lv == .serious || lv == .critical || lv == .shutdown { self?.throttle("系统压力升高") }
+            })
+        }
+        if thermalObs == nil {
+            thermalObs = NotificationCenter.default.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil) { [weak self] _ in
+                let t = ProcessInfo.processInfo.thermalState
+                if t == .serious || t == .critical { self?.throttle("手机温度升高") }
+            }
+        }
+        throttled = false
+    }
+
+    private func throttle(_ why: String) {
+        sessionQueue.async {
+            guard !self.throttled, self.actualBackFps > 30 else { return }
+            self.throttled = true
+            let t = CMTime(value: 1, timescale: 30)
+            for d in [self.backDevice, self.frontDevice].compactMap({ $0 }) {
+                try? d.lockForConfiguration()
+                if d.activeVideoMinFrameDuration < t { d.activeVideoMinFrameDuration = t }
+                if d.activeVideoMaxFrameDuration < t { d.activeVideoMaxFrameDuration = t }
+                d.unlockForConfiguration()
+            }
+            self.actualBackFps = 30
+            DispatchQueue.main.async { self.onPressure?("\(why)，已自动降到 30 帧，防止掉帧卡住") }
+        }
+    }
+
     // MARK: - 采集回调
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -408,7 +525,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         guard output === backOut else { return }
         lock.lock(); lastBack = pb; let f = lastFront; lock.unlock()
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        renderPreview(back: pb, front: f, pts: pts)
+        previewN += 1
+        if actualBackFps <= 35 || previewN % 2 == 0 { renderPreview(back: pb, front: f, pts: pts) }     // 60 帧时预览隔帧刷新，把算力留给录像
         if wantRecord || isRecording { recordFrame(pts) }
         collectLive(back: pb, front: f, pts: pts)
     }
@@ -495,8 +613,12 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             let mainIsBack = L.backIsMain
             let mainImg = mainIsBack ? bk : f, secImg = mainIsBack ? f : bk
             let mainMirror = !mainIsBack && L.mirrorFront, secMirror = mainIsBack && L.mirrorFront
-            out = fill(mainImg, mr, H, mirror: mainMirror).composited(over: bg)
-            let sec = fill(secImg, sr, H, mirror: secMirror)
+            let gMain = mainIsBack ? gradeBack : gradeFront, gSec = mainIsBack ? gradeFront : gradeBack
+            var mainF = fill(mainImg, mr, H, mirror: mainMirror)
+            if !gMain.isNeutral { mainF = gMain.apply(mainF) }
+            out = mainF.composited(over: bg)
+            var sec = fill(secImg, sr, H, mirror: secMirror)
+            if !gSec.isNeutral { sec = gSec.apply(sec) }
             switch L.style {
             case .split:
                 out = sec.composited(over: out)
@@ -508,11 +630,11 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 out = ring.map { $0.transformed(by: place).composited(over: blended) } ?? blended
             }
         } else {
-            out = fill(bk, CGRect(x: 0, y: 0, width: W, height: H), H, mirror: false).composited(over: bg)
+            var one = fill(bk, CGRect(x: 0, y: 0, width: W, height: H), H, mirror: false)
+            if !gradeBack.isNeutral { one = gradeBack.apply(one) }
+            out = one.composited(over: bg)
         }
-        out = out.cropped(to: CGRect(origin: .zero, size: size))
-        if !grade.isNeutral { out = grade.apply(out) }
-        return out
+        return out.cropped(to: CGRect(origin: .zero, size: size))
     }
 
     // MARK: - 拍照

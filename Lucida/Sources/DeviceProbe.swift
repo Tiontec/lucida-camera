@@ -54,7 +54,7 @@ enum DeviceProbe {
             safe = ["top": Double(w.safeAreaInsets.top), "bottom": Double(w.safeAreaInsets.bottom)]
         }
         return [
-            "version": "11.1.8",
+            "version": "11.2.0",
             "multiCam": AVCaptureMultiCamSession.isMultiCamSupported,
             "model": machine(),
             "ios": UIDevice.current.systemVersion,

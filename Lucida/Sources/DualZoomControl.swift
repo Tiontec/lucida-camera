@@ -75,7 +75,8 @@ final class DualZoomControl: UIView {
         dial.layer.addSublayer(dialBg)
         addSubview(dial)
 
-        pill.layer.cornerRadius = 30
+        pill.layer.cornerRadius = 26
+        pill.layer.cornerCurve = .continuous
         pill.clipsToBounds = true
         pillBlur.isUserInteractionEnabled = false
         pill.addSubview(pillBlur)
@@ -146,7 +147,7 @@ final class DualZoomControl: UIView {
 
     // MARK: 外观
     private func applyChrome() {
-        pillBlur.effect = glass ? UIBlurEffect(style: .systemThinMaterialDark) : UIBlurEffect(style: .systemUltraThinMaterialDark)
+        pillBlur.effect = glass ? dualGlassEffect() : UIBlurEffect(style: .systemUltraThinMaterialDark)
         pill.layer.borderWidth = glass ? 0.6 : 0
         pill.layer.borderColor = UIColor(white: 1, alpha: 0.25).cgColor
     }
@@ -178,18 +179,23 @@ final class DualZoomControl: UIView {
         let cur = zoom
         var a = 0
         for (i, s) in pillStops.enumerated() where cur >= s - 0.001 { a = i }
-        let widths: [CGFloat] = (0..<n).map { $0 == a ? 44 : 34 }
-        let total = widths.reduce(0, +) + CGFloat(n - 1) * 2 + 8
+        // 档位多、取景框窄时，把没选中的按钮收窄，保证整条胶囊完整落在取景框里（两端不再被切掉）
+        let avail = bounds.width - 24
+        let gaps = CGFloat(n - 1) * 2 + 8
+        let inactive = max(22, min(34, (avail - 44 - gaps) / CGFloat(max(1, n - 1))))
+        let widths: [CGFloat] = (0..<n).map { $0 == a ? 44 : inactive }
+        let total = min(widths.reduce(0, +) + gaps, avail)
         let h: CGFloat = 52
-        let x0 = (bounds.width - min(total, bounds.width - 12)) / 2
-        let y = bounds.height - 14 - h
-        pill.frame = CGRect(x: x0, y: y, width: min(total, bounds.width - 12), height: h)
+        let x0 = (bounds.width - total) / 2
+        pill.frame = CGRect(x: x0, y: bounds.height - 14 - h, width: total, height: h)
+        pill.layer.cornerRadius = h / 2
         pillBlur.frame = pill.bounds
         var x: CGFloat = 4
         for (i, l) in pillLabels.enumerated() {
             let w = widths[i]
             l.frame = CGRect(x: x, y: (h - w) / 2, width: w, height: w)
             l.layer.cornerRadius = w / 2
+            l.adjustsFontSizeToFitWidth = true; l.minimumScaleFactor = 0.7
             x += w + 2
         }
     }

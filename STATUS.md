@@ -38,3 +38,13 @@
 - DualCamViewController：顶部 返回+规格胶囊面板 / 实况 / 调色盘 / 设置；底部纯黑平面栏；DualPalettePanel；DualSettingsViewController；DualAlbumViewController；液态玻璃（iOS 26 UIGlassEffect，低版本毛玻璃）。
 - 未验证：本环境无 Swift 编译器，只做了语法检查，需 Xcode 编译并真机测试。
 - 限制：多摄会话不提供 ProRAW / 真长焦；实况无声音。
+
+## 11.2.0 双摄调色板 / 液态玻璃 / 手势 / 相册（全部原生）
+- 调色板（DualPalettePanel）：悬浮深色圆角面板；返回 / 二维色盘（圆点）+ 强度滑条 / 复位 / 快门；底部「调色板 / 质感 / 颗粒」页签；页签上方「后置 / 前置 / 同时」选择（`DualSettings.gradeTarget`，前后各一套 `gradeBack` / `gradeFront`，引擎合成时各用各的）；左右滑动换预设，预设名胶囊 + 页码圆点；每条滑条后面有复位按钮。
+- 调色板图标 `PaletteGlyph`：圆角方块点阵，开启黄 / 关闭白，中心点跟着色盘位置。
+- 液态玻璃（DualGlass.swift）：`UIGlassEffect`（iOS 26，`#if compiler(>=6.2)` + `#available`），低版本毛玻璃；规格面板、调色底板、设置里的分段 / 开关 / 滑条、所有圆按钮；变焦胶囊两端裁切 / 鼓出修复。
+- 实况计时：取景框左上角（`liveTimerLabel`），设置里「实况计时显示」开关。
+- 手势（DualCamViewController）：双击小窗放大 / 缩小；单击小窗互换；单击主画面对焦测光；对焦后上下拖动调曝光（`setExposureTargetBias`）；长按锁定 AE/AF（`DualFocusIndicator.swift`）。前后摄都支持。
+- 相册：最新在左上；2 列 × 3 行 = 每屏 6 张；双指捏合 / 张开缩放。
+- 4K60 前置掉帧：`systemPressureState` + `thermalState` 触发降到 30 帧；60 帧下取景渲染减半。
+- **未验证**：本环境无 Swift 编译器，只做了语法检查 + 符号交叉检查，需 Xcode 编译并真机测试；前置摄像头对焦点坐标映射为推算、未真机验证；4K60 前置掉帧的根因在这里无法复现，只做了降风险处理；液态玻璃仅 iOS 26+。

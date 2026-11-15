@@ -1,38 +1,8 @@
 import UIKit
 import AVFoundation
 
-/// 圆形图标按钮：普通样式 = 半透明灰底；液态玻璃开启 = iOS 26 系统 UIGlassEffect（低版本退回毛玻璃）
-final class DualRoundButton: UIButton {
-    private let bg = UIVisualEffectView(effect: nil)
-    var active = false { didSet { tintColor = active ? UIColor(red: 1, green: 0.84, blue: 0.04, alpha: 1) : .white } }
-    init(symbol: String, size: CGFloat) {
-        super.init(frame: .zero)
-        bg.isUserInteractionEnabled = false; bg.clipsToBounds = true; bg.layer.cornerRadius = size / 2
-        insertSubview(bg, at: 0)
-        setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: size * 0.42, weight: .semibold)), for: .normal)
-        tintColor = .white
-        translatesAutoresizingMaskIntoConstraints = false
-        widthAnchor.constraint(equalToConstant: size).isActive = true
-        heightAnchor.constraint(equalToConstant: size).isActive = true
-        setGlass(false)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-    override func layoutSubviews() { super.layoutSubviews(); bg.frame = bounds; sendSubviewToBack(bg) }
-    func setSymbol(_ n: String) {
-        setImage(UIImage(systemName: n, withConfiguration: UIImage.SymbolConfiguration(pointSize: bounds.width * 0.42, weight: .semibold)), for: .normal)
-    }
-    func setGlass(_ on: Bool) {
-        if on {
-            #if compiler(>=6.2)
-            if #available(iOS 26.0, *) { bg.effect = UIGlassEffect(); bg.backgroundColor = nil; return }
-            #endif
-            bg.effect = UIBlurEffect(style: .systemThinMaterialDark); bg.backgroundColor = UIColor(white: 1, alpha: 0.06)
-        } else { bg.effect = nil; bg.backgroundColor = UIColor(white: 1, alpha: 0.16) }
-    }
-}
-
 /// 原生双摄相机界面：取景（引擎合成的画面）+ 顶部 / 底部控件 + 变焦转盘 + 调色面板 + 设置 + 相册。
-final class DualCamViewController: UIViewController {
+final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate {
     enum Mode { case photo, video }
     struct Item { var kind: String; var url: URL; var saved: Bool }
 
@@ -63,13 +33,20 @@ final class DualCamViewController: UIViewController {
     private let spinner = UIActivityIndicatorView(style: .large)
     private let specPill = UIButton(type: .system)
     private let specPanel = UIView()
-    private var specSegs: [UISegmentedControl] = []
-    private var roundBtns: [DualRoundButton] = []
-    private var btnBack: DualRoundButton!, btnLive: DualRoundButton!, btnPalette: DualRoundButton!, btnSettings: DualRoundButton!
-    private var btnLayout: DualRoundButton!, btnShape: DualRoundButton!, btnMirror: DualRoundButton!, btnTorch: DualRoundButton!, btnSwap: DualRoundButton!
+    private var specSegs: [GlassSegmented] = []
+    private let specBack = DualBackdrop(radius: 20)
+    private let pillBack = DualBackdrop()
+    private var roundBtns: [DualCircleButton] = []
+    private var btnBack: DualCircleButton!, btnLive: DualCircleButton!, btnPalette: DualCircleButton!, btnSettings: DualCircleButton!
+    private var btnLayout: DualCircleButton!, btnShape: DualCircleButton!, btnMirror: DualCircleButton!, btnTorch: DualCircleButton!, btnSwap: DualCircleButton!
     private let palette = DualPalettePanel()
     private let readout = UILabel(), presetLabel = UILabel()
     private var paletteOpen = false
+    private let pageDots = UIPageControl()
+    private let liveTimerLabel = UILabel()
+    private var liveTick: Timer?
+    private let focusBox = FocusIndicator()
+    private var focusBack = true, biasBase: Float = 0, exposureDragging = false, pipDragging = false
     private var stageFrame = CGRect.zero
     private var lastAspect: CGFloat = 0
     private var pipDragStart = CGPoint.zero
@@ -89,6 +66,7 @@ final class DualCamViewController: UIViewController {
         engine.layout.border = st.border
         engine.layout.style = st.pipStyleSplit ? .split : .pip
         buildUI()
+        engine.onPressure = { [weak self] m in self?.say(m, 3.5) }
         applyGlass()
         spinner.startAnimating()
         requestPermissions { [weak self] videoOK, audioOK in
@@ -164,15 +142,17 @@ final class DualCamViewController: UIViewController {
             zoomCtl.frame = CGRect(x: f.minX, y: f.maxY - 160, width: f.width, height: 160)
         }
         bottomBar.frame = CGRect(x: 0, y: H - barH, width: W, height: barH)
-        palette.frame = CGRect(x: 0, y: H - 290 - bot, width: W, height: 290 + bot)
+        palette.frame = CGRect(x: 8, y: H - bot - 286, width: W - 16, height: 280)
+        presetLabel.frame = CGRect(x: (W - 130) / 2, y: palette.frame.minY - 62, width: 130, height: 26)
+        pageDots.frame = CGRect(x: (W - 220) / 2, y: palette.frame.minY - 32, width: 220, height: 20)
         spinner.center = stage.center
         layoutBottom()
     }
 
     // MARK: - 界面搭建
 
-    private func rb(_ sym: String, _ size: CGFloat = 40, _ sel: Selector) -> DualRoundButton {
-        let b = DualRoundButton(symbol: sym, size: size)
+    private func rb(_ sym: String, _ size: CGFloat = 40, _ sel: Selector) -> DualCircleButton {
+        let b = DualCircleButton(symbol: sym, size: size)
         b.addTarget(self, action: sel, for: .touchUpInside)
         roundBtns.append(b); return b
     }
@@ -181,11 +161,14 @@ final class DualCamViewController: UIViewController {
         stage.backgroundColor = .black; stage.clipsToBounds = true
         stage.layer.addSublayer(engine.previewLayer)
         view.addSubview(stage)
-        let pan = UIPanGestureRecognizer(target: self, action: #selector(panPip(_:)))
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(panStage(_:))); pan.delegate = self
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapStage(_:)))
+        let dbl = UITapGestureRecognizer(target: self, action: #selector(doubleTapStage(_:))); dbl.numberOfTapsRequired = 2
+        tap.require(toFail: dbl)
+        let lp = UILongPressGestureRecognizer(target: self, action: #selector(longPressStage(_:))); lp.minimumPressDuration = 0.5
         let swipeL = UISwipeGestureRecognizer(target: self, action: #selector(swipePreset(_:))); swipeL.direction = .left
         let swipeR = UISwipeGestureRecognizer(target: self, action: #selector(swipePreset(_:))); swipeR.direction = .right
-        [pan, tap, swipeL, swipeR].forEach { stage.addGestureRecognizer($0) }
+        [pan, tap, dbl, lp, swipeL, swipeR].forEach { stage.addGestureRecognizer($0) }
         view.addSubview(zoomCtl)
         zoomCtl.onZoom = { [weak self] z in guard let self = self else { return }; self.engine.setZoom(back: self.mainIsBack, z) }
         zoomCtl.onSettle = { [weak self] z in self?.zoomSettled(z) }
@@ -196,7 +179,7 @@ final class DualCamViewController: UIViewController {
         btnPalette = rb("circle.hexagongrid.fill", 40, #selector(togglePalette))
         btnSettings = rb("gearshape.fill", 40, #selector(openSettings))
         specPill.setTitleColor(.white, for: .normal); specPill.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
-        specPill.backgroundColor = UIColor(white: 1, alpha: 0.16); specPill.layer.cornerRadius = 18
+        pillBack.capsule = true; specPill.insertSubview(pillBack, at: 0); specPill.clipsToBounds = false
         specPill.contentEdgeInsets = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
         specPill.addTarget(self, action: #selector(toggleSpecPanel), for: .touchUpInside)
         let right = UIStackView(arrangedSubviews: [btnLive, btnPalette, btnSettings]); right.spacing = 8
@@ -211,7 +194,7 @@ final class DualCamViewController: UIViewController {
         buildSpecPanel()
 
         // 取景区信息
-        for l in [readout, presetLabel] {
+        for l in [readout] {
             l.textColor = .white; l.font = .systemFont(ofSize: 13, weight: .semibold); l.textAlignment = .center
             l.backgroundColor = UIColor(white: 0, alpha: 0.45); l.layer.cornerRadius = 13; l.clipsToBounds = true; l.isHidden = true
             l.translatesAutoresizingMaskIntoConstraints = false; stage.addSubview(l)
@@ -220,8 +203,21 @@ final class DualCamViewController: UIViewController {
         }
         readout.topAnchor.constraint(equalTo: stage.topAnchor, constant: 10).isActive = true
         readout.widthAnchor.constraint(greaterThanOrEqualToConstant: 190).isActive = true
-        presetLabel.bottomAnchor.constraint(equalTo: stage.bottomAnchor, constant: -170).isActive = true
-        presetLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 90).isActive = true
+        presetLabel.textColor = .white; presetLabel.font = .systemFont(ofSize: 13, weight: .semibold); presetLabel.textAlignment = .center
+        presetLabel.backgroundColor = UIColor(white: 0, alpha: 0.45); presetLabel.layer.cornerRadius = 13; presetLabel.clipsToBounds = true; presetLabel.isHidden = true
+        view.addSubview(presetLabel)
+        pageDots.numberOfPages = stylePresets.count; pageDots.isUserInteractionEnabled = false
+        pageDots.pageIndicatorTintColor = UIColor(white: 1, alpha: 0.35); pageDots.currentPageIndicatorTintColor = .white; pageDots.isHidden = true
+        view.addSubview(pageDots)
+        // 实况计时（取景框左上角）
+        liveTimerLabel.textColor = .white; liveTimerLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        liveTimerLabel.backgroundColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 0.9); liveTimerLabel.layer.cornerRadius = 12
+        liveTimerLabel.clipsToBounds = true; liveTimerLabel.textAlignment = .center; liveTimerLabel.isHidden = true
+        liveTimerLabel.translatesAutoresizingMaskIntoConstraints = false; stage.addSubview(liveTimerLabel)
+        NSLayoutConstraint.activate([liveTimerLabel.topAnchor.constraint(equalTo: stage.topAnchor, constant: 10),
+            liveTimerLabel.leadingAnchor.constraint(equalTo: stage.leadingAnchor, constant: 12),
+            liveTimerLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 120), liveTimerLabel.heightAnchor.constraint(equalToConstant: 24)])
+        focusBox.isHidden = true; stage.addSubview(focusBox)
         timerLabel.textColor = .white; timerLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .semibold)
         timerLabel.backgroundColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 1); timerLabel.layer.cornerRadius = 12
         timerLabel.clipsToBounds = true; timerLabel.textAlignment = .center; timerLabel.isHidden = true
@@ -285,8 +281,9 @@ final class DualCamViewController: UIViewController {
     }
 
     private func buildSpecPanel() {
-        specPanel.backgroundColor = UIColor(white: 0.1, alpha: 0.94); specPanel.layer.cornerRadius = 18; specPanel.isHidden = true
+        specPanel.isHidden = true
         specPanel.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(specPanel)
+        specBack.translatesAutoresizingMaskIntoConstraints = false; specPanel.addSubview(specBack)
         let defs: [(String, [String], Int)] = [
             ("分辨率", ["720p", "1080p", "4K"], [720, 1080, 2160].firstIndex(of: st.res) ?? 1),
             ("帧率", ["24", "30", "60"], [24, 30, 60].firstIndex(of: st.fps) ?? 1),
@@ -294,9 +291,10 @@ final class DualCamViewController: UIViewController {
         let col = UIStackView(); col.axis = .vertical; col.spacing = 10; col.translatesAutoresizingMaskIntoConstraints = false
         specPanel.addSubview(col)
         for (i, d) in defs.enumerated() {
-            let l = UILabel(); l.text = d.0; l.textColor = UIColor(white: 1, alpha: 0.7); l.font = .systemFont(ofSize: 13); l.widthAnchor.constraint(equalToConstant: 60).isActive = true
-            let s = UISegmentedControl(items: d.1); s.selectedSegmentIndex = d.2; s.tag = i
-            s.addTarget(self, action: #selector(specChanged(_:)), for: .valueChanged)
+            let l = UILabel(); l.text = d.0; l.textColor = UIColor(white: 1, alpha: 0.75); l.font = .systemFont(ofSize: 13); l.widthAnchor.constraint(equalToConstant: 60).isActive = true
+            let s = GlassSegmented(items: d.1, selected: d.2)
+            s.onChange = { [weak self] idx in self?.specChanged(i, idx) }
+            s.heightAnchor.constraint(equalToConstant: 34).isActive = true
             specSegs.append(s)
             let r = UIStackView(arrangedSubviews: [l, s]); r.spacing = 8; r.alignment = .center; col.addArrangedSubview(r)
         }
@@ -305,7 +303,9 @@ final class DualCamViewController: UIViewController {
         NSLayoutConstraint.activate([
             specPanel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 50),
             specPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
-            specPanel.widthAnchor.constraint(equalToConstant: 300),
+            specPanel.widthAnchor.constraint(equalToConstant: 310),
+            specBack.topAnchor.constraint(equalTo: specPanel.topAnchor), specBack.bottomAnchor.constraint(equalTo: specPanel.bottomAnchor),
+            specBack.leadingAnchor.constraint(equalTo: specPanel.leadingAnchor), specBack.trailingAnchor.constraint(equalTo: specPanel.trailingAnchor),
             col.topAnchor.constraint(equalTo: specPanel.topAnchor, constant: 14), col.bottomAnchor.constraint(equalTo: specPanel.bottomAnchor, constant: -14),
             col.leadingAnchor.constraint(equalTo: specPanel.leadingAnchor, constant: 14), col.trailingAnchor.constraint(equalTo: specPanel.trailingAnchor, constant: -14)])
     }
@@ -314,7 +314,11 @@ final class DualCamViewController: UIViewController {
         let g = st.glass
         roundBtns.forEach { $0.setGlass(g) }
         zoomCtl.glass = g
-        specPill.backgroundColor = g ? UIColor(white: 1, alpha: 0.08) : UIColor(white: 1, alpha: 0.16)
+        palette.glass = g
+        specSegs.forEach { $0.glass = g }
+        specBack.apply(glass: g, flat: UIColor(white: 0.1, alpha: 0.94))
+        pillBack.apply(glass: g, flat: UIColor(white: 1, alpha: 0.16), interactive: true)
+        thumb.layer.cornerCurve = .continuous
     }
 
     // MARK: - 同步状态
@@ -333,9 +337,10 @@ final class DualCamViewController: UIViewController {
     }
     private func syncButtons() {
         btnLive.active = st.liveOn; btnLive.isEnabled = mode == .photo; btnLive.alpha = mode == .photo ? 1 : 0.4
-        btnPalette.active = !DualSettings.shared.grade.isNeutral || paletteOpen
+        btnPalette.active = !(st.gradeBack.isNeutral && st.gradeFront.isNeutral) || paletteOpen
+        updatePaletteGlyph()
         btnTorch.active = torchOn; btnMirror.active = st.mirror
-        btnLayout.setSymbol(engine.layout.style == .pip ? "rectangle.split.1x2" : "pip")
+        btnLayout.setSymbol(engine.layout.style == .pip ? "rectangle.split.1x2" : "pip", size: 34)
         btnShape.isEnabled = engine.layout.style == .pip; btnShape.alpha = btnShape.isEnabled ? 1 : 0.4
     }
     private func syncTabs() {
@@ -373,17 +378,18 @@ final class DualCamViewController: UIViewController {
         torchOn.toggle(); engine.setTorch(torchOn); syncButtons()
     }
     @objc private func swapMain() {
+        focusBox.hide(); engine.resetFocus(back: focusBack)
         var l = engine.layout; l.backIsMain.toggle(); engine.layout = l; st.backIsMain = l.backIsMain
         syncZoomRange(resetTo: nil)
     }
     @objc private func toggleSpecPanel() { specPanel.isHidden.toggle() }
-    @objc private func specChanged(_ s: UISegmentedControl) {
-        switch s.tag {
-        case 0: st.res = [720, 1080, 2160][s.selectedSegmentIndex]
-        case 1: st.fps = [24, 30, 60][s.selectedSegmentIndex]
+    private func specChanged(_ tag: Int, _ idx: Int) {
+        switch tag {
+        case 0: st.res = [720, 1080, 2160][idx]
+        case 1: st.fps = [24, 30, 60][idx]
         default:
-            if s.selectedSegmentIndex == 2 { s.selectedSegmentIndex = st.heif ? 1 : 0; say("双摄同时拍摄时系统不支持 ProRAW"); return }
-            st.heif = s.selectedSegmentIndex == 1; syncSpecPill(); return
+            if idx == 2 { specSegs[2].select(st.heif ? 1 : 0); say("双摄同时拍摄时系统不支持 ProRAW"); return }
+            st.heif = idx == 1; syncSpecPill(); return
         }
         applySpec()
     }
@@ -401,9 +407,8 @@ final class DualCamViewController: UIViewController {
             if let z = keepZoom, err == nil { self.engine.setZoom(back: true, z); self.syncZoomRange(resetTo: z) }
             else { self.syncZoomRange(resetTo: nil) }
             self.syncSpecPill()
-            for (i, s) in self.specSegs.enumerated() where i < 2 {
-                s.selectedSegmentIndex = i == 0 ? ([720, 1080, 2160].firstIndex(of: self.st.res) ?? 1) : ([24, 30, 60].firstIndex(of: self.st.fps) ?? 1)
-            }
+            self.specSegs[0].select([720, 1080, 2160].firstIndex(of: self.st.res) ?? 1)
+            self.specSegs[1].select([24, 30, 60].firstIndex(of: self.st.fps) ?? 1)
             self.engine.liveEnabled = self.st.liveOn && self.mode == .photo
         }
     }
@@ -440,20 +445,33 @@ final class DualCamViewController: UIViewController {
     @objc private func togglePalette() { setPalette(!paletteOpen) }
     private func setPalette(_ on: Bool) {
         paletteOpen = on; palette.isHidden = !on; bottomBar.isHidden = on; zoomCtl.isHidden = on
-        readout.isHidden = !on; presetLabel.isHidden = !on
+        readout.isHidden = !on; presetLabel.isHidden = !on; pageDots.isHidden = !on
+        if on { focusBox.hide() }
         if on { palette.syncFromState(); paletteChanged() }
         syncButtons()
     }
+    /// 正在显示 / 修改的那套调色（前置选「前置」，其余显示后置的）
+    private var shownGrade: GradeState { st.gradeTarget == 1 ? st.gradeFront : st.gradeBack }
+    private var gradeTargets: [GradeState] {
+        switch st.gradeTarget { case 0: return [st.gradeBack]; case 1: return [st.gradeFront]; default: return [st.gradeBack, st.gradeFront] }
+    }
+    private func updatePaletteGlyph() {
+        let s = shownGrade.snapshot()
+        btnPalette.setImage(PaletteGlyph.image(size: 26, x: s.x, y: s.y), for: .normal)
+    }
     private func paletteChanged() {
-        let s = st.grade.snapshot()
+        let s = shownGrade.snapshot()
         readout.text = "色调 \(Int((s.y * 100).rounded()))   颜色 \(Int((s.x * 100).rounded()))   调色盘 \(Int((s.str * 100).rounded()))"
-        let i = st.grade.presetIndex
-        presetLabel.text = "  \(s.preset.name)  (\(i + 1)/\(stylePresets.count))  "
+        let i = shownGrade.presetIndex
+        presetLabel.text = "  \(s.preset.name)  "
+        pageDots.currentPage = i
+        updatePaletteGlyph()
     }
     @objc private func swipePreset(_ g: UISwipeGestureRecognizer) {
         guard paletteOpen else { return }
-        let n = stylePresets.count, i = st.grade.presetIndex
-        st.grade.selectPreset(g.direction == .left ? (i + 1) % n : (i - 1 + n) % n)
+        let n = stylePresets.count, i = shownGrade.presetIndex
+        let ni = g.direction == .left ? (i + 1) % n : (i - 1 + n) % n
+        gradeTargets.forEach { $0.selectPreset(ni) }
         palette.syncFromState(); paletteChanged()
     }
 
@@ -463,21 +481,83 @@ final class DualCamViewController: UIViewController {
         let L = engine.layout; guard L.style == .pip else { return .zero }
         return L.rects(stage.bounds.width, stage.bounds.height).second
     }
-    @objc private func panPip(_ g: UIPanGestureRecognizer) {
-        guard engine.layout.style == .pip else { return }
+    /// 主画面占取景框的哪一块（画中画 = 整个取景框；上下分屏 = 上半）
+    private func mainRect() -> CGRect { engine.layout.rects(stage.bounds.width, stage.bounds.height).main }
+
+    private func inPip(_ p: CGPoint) -> Bool { engine.layout.style == .pip && pipRect().insetBy(dx: -10, dy: -10).contains(p) }
+
+    /// 拖动：落在小窗上 = 移动小窗；已经有对焦框时 = 上下拖动调曝光
+    @objc private func panStage(_ g: UIPanGestureRecognizer) {
         let W = stage.bounds.width, H = stage.bounds.height
-        if g.state == .began { pipDragStart = g.location(in: stage); if !pipRect().insetBy(dx: -10, dy: -10).contains(pipDragStart) { g.isEnabled = false; g.isEnabled = true; return } }
-        guard g.state == .changed else { return }
-        let t = g.translation(in: stage); g.setTranslation(.zero, in: stage)
-        var l = engine.layout
-        let w = (W * l.pipW).rounded(), h = (w * 4 / 3).rounded(), m = (W * 0.04).rounded()
-        let rx = max(1, W - w - 2 * m), ry = max(1, H - h - 2 * m)
-        l.pipX = min(1, max(0, l.pipX + t.x / rx)); l.pipY = min(1, max(0, l.pipY + t.y / ry))
-        engine.layout = l
+        switch g.state {
+        case .began:
+            let p = g.location(in: stage)
+            pipDragging = inPip(p); exposureDragging = !pipDragging && focusBox.isVisible
+            if exposureDragging { biasBase = focusBox.bias; focusBox.keepAlive() }
+        case .changed:
+            if pipDragging {
+                let t = g.translation(in: stage); g.setTranslation(.zero, in: stage)
+                var l = engine.layout
+                let w = (W * l.pipW).rounded(), h = (w * 4 / 3).rounded(), m = (W * 0.04).rounded()
+                let rx = max(1, W - w - 2 * m), ry = max(1, H - h - 2 * m)
+                l.pipX = min(1, max(0, l.pipX + t.x / rx)); l.pipY = min(1, max(0, l.pipY + t.y / ry))
+                engine.layout = l
+            } else if exposureDragging {
+                // 上拉 = 变亮，下拉 = 变暗
+                let (lo, hi) = engine.biasRange(back: focusBack)
+                let dy = Float(-g.translation(in: stage).y / (H * 0.4))
+                let v = min(hi, max(lo, biasBase + dy * (hi - lo)))
+                focusBox.bias = v; focusBox.range = (lo, hi); focusBox.setNeedsDisplay()
+                engine.setBias(back: focusBack, v)
+                focusBox.keepAlive()
+            }
+        case .ended, .cancelled:
+            if exposureDragging { focusBox.keepAlive() }
+            pipDragging = false; exposureDragging = false
+        default: break
+        }
     }
+
+    /// 单点：点小窗 = 互换主 / 小窗；点主画面 = 对焦 + 测光
     @objc private func tapStage(_ g: UITapGestureRecognizer) {
         specPanel.isHidden = true
-        if engine.layout.style == .pip && pipRect().contains(g.location(in: stage)) { swapMain() }
+        let p = g.location(in: stage)
+        if engine.layout.style == .pip && pipRect().contains(p) { swapMain(); return }
+        guard !paletteOpen else { return }
+        focusAt(p, lock: false)
+    }
+
+    /// 双击小窗：放大 / 缩小
+    @objc private func doubleTapStage(_ g: UITapGestureRecognizer) {
+        let p = g.location(in: stage)
+        guard engine.layout.style == .pip, pipRect().contains(p) else { return }
+        var l = engine.layout
+        l.pipW = l.pipW > 0.4 ? 0.32 : 0.55
+        engine.layout = l
+        say(l.pipW > 0.4 ? "小窗已放大" : "小窗已缩小")
+    }
+
+    /// 长按：锁定对焦和曝光（再长按 / 再点一下解除）
+    @objc private func longPressStage(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began, !paletteOpen else { return }
+        let p = g.location(in: stage)
+        if inPip(p) { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        focusAt(p, lock: true)
+    }
+
+    private func focusAt(_ p: CGPoint, lock: Bool) {
+        let r = mainRect()
+        guard r.contains(p), ready else { return }
+        focusBack = mainIsBack
+        let nx = (p.x - r.minX) / r.width, ny = (p.y - r.minY) / r.height
+        let dp = engine.devicePoint(back: focusBack, nx: nx, ny: ny, rectAspect: r.width / r.height)
+        engine.focus(back: focusBack, at: dp, lock: lock)
+        let (lo, hi) = engine.biasRange(back: focusBack)
+        focusBox.range = (lo, hi)
+        focusBox.show(at: p, in: stage.bounds, locked: lock)
+        if !lock { engine.setBias(back: focusBack, 0) }
+        say(lock ? "已锁定对焦和曝光（再点一下解除）" : "对焦 · 上下拖动调曝光", 1.6)
     }
 
     // MARK: - 拍摄
@@ -499,7 +579,7 @@ final class DualCamViewController: UIViewController {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let flash = UIView(frame: stage.bounds); flash.backgroundColor = .white; stage.addSubview(flash)
         UIView.animate(withDuration: 0.25, animations: { flash.alpha = 0 }) { _ in flash.removeFromSuperview() }
-        if live { engine.captureLive(totalSeconds: st.liveDur) { [weak self] mov, still, err in self?.liveDone(url, mov, still, err) }; say("实况录制中…") }
+        if live { engine.captureLive(totalSeconds: st.liveDur) { [weak self] mov, still, err in self?.liveDone(url, mov, still, err) }; startLiveTimer(); say("实况录制中…") }
         engine.takePhoto(to: url, heif: heif) { [weak self] ok, err in
             DispatchQueue.main.async {
                 guard let self = self else { return }
@@ -511,6 +591,7 @@ final class DualCamViewController: UIViewController {
 
     private func liveDone(_ photo: URL, _ mov: URL?, _ still: Double, _ err: String?) {
         DispatchQueue.main.async {
+            self.finishLiveTimer(ok: mov != nil)
             guard let mov = mov else { self.say("实况失败：\(err ?? "")，已保存静态照片"); self.store(photo, isVideo: false); return }
             self.saving += 1
             LivePhotoSaver.save(photo: photo, video: mov, duration: self.st.liveDur, still: still) { ok, msg in
@@ -521,6 +602,44 @@ final class DualCamViewController: UIViewController {
                 if self.st.liveAlsoStill { PhotoSaver.save(file: photo, isVideo: false) { _, _ in } }
             }
         }
+    }
+
+    // MARK: - 实况计时（取景框左上角）
+
+    private func startLiveTimer() {
+        guard st.liveTimer else { return }
+        liveTick?.invalidate()
+        let total = max(1.0, st.liveDur), pre = min(1.5, total / 2)
+        let t0 = Date()
+        liveTimerLabel.isHidden = false
+        liveTimerLabel.backgroundColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 0.9)
+        liveTimerLabel.text = String(format: "● 实况  %.1f / %.1f 秒", pre, total)
+        liveTick = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let e = min(total, pre + Date().timeIntervalSince(t0))
+            self.liveTimerLabel.text = e >= total ? "实况合成中…" : String(format: "● 实况  %.1f / %.1f 秒", e, total)
+        }
+    }
+
+    private func finishLiveTimer(ok: Bool) {
+        liveTick?.invalidate(); liveTick = nil
+        guard st.liveTimer, !liveTimerLabel.isHidden else { return }
+        liveTimerLabel.backgroundColor = ok ? UIColor(red: 0.1, green: 0.6, blue: 0.3, alpha: 0.92) : UIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 0.92)
+        liveTimerLabel.text = ok ? "✓ 实况已拍完" : "实况失败"
+        let tag = Int(Date().timeIntervalSince1970 * 1000); liveTimerLabel.tag = tag
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            guard let self = self, self.liveTimerLabel.tag == tag, self.liveTick == nil else { return }
+            self.liveTimerLabel.isHidden = true
+        }
+    }
+
+    // MARK: - 手势代理：拖动只在需要的时候才接管
+
+    func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        guard g is UIPanGestureRecognizer else { return true }
+        if paletteOpen { return false }
+        let p = g.location(in: stage)
+        return inPip(p) || focusBox.isVisible
     }
 
     private func startRecording() {

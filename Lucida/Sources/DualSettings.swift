@@ -35,7 +35,13 @@ final class DualSettings {
     var pipStyleSplit: Bool { get { d.bool(forKey: key("split")) } set { d.set(newValue, forKey: key("split")) } }
     var backIsMain: Bool { get { d.object(forKey: key("backMain")) as? Bool ?? true } set { d.set(newValue, forKey: key("backMain")) } }
 
-    let grade = GradeState()
+    var liveTimer: Bool { get { d.object(forKey: key("liveTimer")) as? Bool ?? true } set { d.set(newValue, forKey: key("liveTimer")) } }
+
+    /// 前后摄像头各一套调色
+    let gradeBack = GradeState()
+    let gradeFront = GradeState()
+    /// 调色盘正在改谁：0 后置 / 1 前置 / 2 同时
+    var gradeTarget = 2
 }
 
 // MARK: - 调色（和主页面「调色板 / 质感 / 颗粒」同一套预设和参数）
@@ -85,6 +91,15 @@ final class GradeState {
     }
 
     var presetIndex: Int { lock.lock(); defer { lock.unlock() }; return _preset }
+
+    /// 整套参数照抄另一个状态（「同时更改」时用）
+    func copy(from o: GradeState) {
+        let s = o.snapshot(), i = o.presetIndex
+        lock.lock()
+        _preset = i; _x = s.x; _y = s.y; _str = s.str; _contrast = s.contrast; _clarity = s.clarity; _sharp = s.sharp
+        _grainAmt = s.grainAmt; _grainSize = s.grainSize
+        lock.unlock()
+    }
 
     func selectPreset(_ i: Int) {
         lock.lock(); defer { lock.unlock() }
