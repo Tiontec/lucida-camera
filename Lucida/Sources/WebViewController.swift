@@ -35,6 +35,9 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
         ucc.add(legacy, name: "lucidaLive")
         ucc.add(legacy, name: "lucidaLG")
         ucc.add(legacy, name: "lucidaSkin")
+        ucc.add(NativeKVHandler(), name: "lucidaKV")
+        ucc.addUserScript(WKUserScript(source: NativeKV.shared.injectionScript(),
+                                       injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let probe = DeviceProbe.json()
         ucc.addUserScript(WKUserScript(source: "window.__LUCIDA_NATIVE__=\(probe);",
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -135,6 +138,11 @@ final class WebViewController: UIViewController, WKUIDelegate, WKNavigationDeleg
 
     // 网页进程被系统回收（内存紧张）时自动重新加载
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        // 重新加载前把「注入网页的原生存档」换成最新的，否则会用启动时的旧存档盖掉新设置
+        let ucc = webView.configuration.userContentController
+        ucc.removeAllUserScripts()
+        ucc.addUserScript(WKUserScript(source: NativeKV.shared.injectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        ucc.addUserScript(WKUserScript(source: "window.__LUCIDA_NATIVE__=\(DeviceProbe.json());", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView.load(URLRequest(url: URL(string: "lucida://app/index.html")!))
     }
 

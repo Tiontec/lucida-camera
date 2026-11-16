@@ -54,21 +54,31 @@ final class DualSettings {
 // MARK: - 预设顺序（和主页面「调色盘预设顺序」同一套：可拖动调整，「标准」始终排第一）
 
 enum PresetOrder {
-    private static let key = "lucida.dual2.presetOrder"
+    /// 和主页面同一个存档键：网页写的原生能读，原生写的网页也能读（长期计划 A2）
+    private static let key = "lucida.order2", oldKey = "lucida.dual2.presetOrder"
+    private static var all: [String] { stylePresets.map { $0.sid } }
+    private static func valid(_ o: [String]) -> Bool { o.count == all.count && Set(o) == Set(all) }
+    private static func json(_ o: [String]) -> String {
+        (try? JSONSerialization.data(withJSONObject: o)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+    }
     static var sids: [String] {
         get {
-            let all = stylePresets.map { $0.sid }
-            if let o = UserDefaults.standard.array(forKey: key) as? [String], o.count == all.count, Set(o) == Set(all) { return pinStandard(o) }
+            if let s = NativeKV.shared.get(key), let d = s.data(using: .utf8),
+               let o = (try? JSONSerialization.jsonObject(with: d)) as? [String], valid(o) { return pinStandard(o) }
+            // 迁移：11.2.x 的双摄自己存过一份，网页还没存过时沿用它
+            if let o = UserDefaults.standard.array(forKey: oldKey) as? [String], valid(o) {
+                let p = pinStandard(o); NativeKV.shared.setNative(key, json(p)); UserDefaults.standard.removeObject(forKey: oldKey); return p
+            }
             return all
         }
-        set { UserDefaults.standard.set(pinStandard(newValue), forKey: key) }
+        set { NativeKV.shared.setNative(key, json(pinStandard(newValue))) }
     }
     private static func pinStandard(_ o: [String]) -> [String] {
         var r = o
         if let i = r.firstIndex(of: "standard"), i > 0 { r.remove(at: i); r.insert("standard", at: 0) }
         return r
     }
-    static func reset() { UserDefaults.standard.removeObject(forKey: key) }
+    static func reset() { NativeKV.shared.setNative(key, json(all)) }
     /// 按顺序排好的预设下标（指向 stylePresets）
     static var indices: [Int] { sids.compactMap { sid in stylePresets.firstIndex { $0.sid == sid } } }
 }

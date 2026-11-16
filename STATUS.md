@@ -1,3 +1,8 @@
+# 状态（11.4.0 · 长期计划 A2 原生存储）
+- 新增 NativeKV（iOS：NativeKV.swift；安卓：NativeKv.java）：网页 `lucida.*` 设置的权威存档在原生；调色盘预设顺序网页与双摄共用键 `lucida.order2`。
+- 已验证：网页同步脚本在 Node 里模拟了「首次迁移 / 原生覆盖 / 改动同步 / 原生推送」；用 Chromium 加载真实的 11.4.0 网页，无报错，存储镜像和预设顺序推送都生效。
+- **未验证**：iOS Swift 未编译；安卓只做了 javac 编译检查；两端的原生存储文件读写、前后台切换时落盘，都没在真机跑过。
+
 # 状态（11.3.0 · 长期计划 A1 共享数据）
 - 本版只做「共享数据」：预设 / 质感 / 颗粒 / 强度系数统一放在 `shared/lucida-shared.json`，网页、iOS（SharedData.swift）、安卓（SharedData.java）都由 `tools/gen_shared.py` 生成；用户可见功能不变。
 - 已验证：网页新旧版 28080 组参数完全一致；安卓 GradeState 与网页 22464 组最大误差 4e-8（在 JVM 上实际跑过）；iOS 生成文件与 json 逐项一致（脚本解析对照），**但 Swift 未编译、未运行**。

@@ -85,6 +85,11 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
                 ["kind": $0.kind, "url": "lucida://file/" + $0.url.lastPathComponent,
                  "name": $0.url.lastPathComponent, "saved": $0.saved]
             }
+            // 双摄里改过的存档设置（如调色盘预设顺序）同步给网页
+            let ch = NativeKV.shared.takeNativeChanges()
+            if !ch.isEmpty, let data = try? JSONSerialization.data(withJSONObject: ch), let s = String(data: data, encoding: .utf8) {
+                self?.host?.js("window.__lucidaKvPush&&window.__lucidaKvPush(\(s))")
+            }
             reply(["ok": true, "items": arr], nil)
         }
         vc.present(d, animated: true)
