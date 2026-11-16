@@ -16,7 +16,7 @@ enum SharedApp {
 }
 
 enum SharedGrade {
-    static let toneK = 0.6, satK = 0.8, fadeK = 1
+    static let toneK = 0.6, satK = 0.8, fadeK = 1.0
     static let texOn = 0.004, grainOn = 0.004, grainK = 0.3
     /// 质感系数：行 = 标准 / 柔肤 / 光晕 / 胶片，列 = con sat hi sh tmp cl sp gr hal
     static let texKeys = ["con", "sat", "hi", "sh", "tmp", "cl", "sp", "gr", "hal"]
