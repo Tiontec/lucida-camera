@@ -103,47 +103,120 @@ final class GlassSegmented: UIControl {
 
 // MARK: - 开关
 
+/// 开关（紧凑尺寸 50 × 28）：旋钮平时是纯白色长圆；按住 / 点击 / 拖动时变成液态玻璃水滴，
+/// 拖到哪一边松手就开 / 关，松手后水滴落回纯白旋钮。未开液态玻璃时只做普通的白色旋钮（按下会略微拉长）。
 final class GlassSwitch: UIControl {
     private(set) var isOn = false
     var onChange: ((Bool) -> Void)?
     var glass = false { didSet { restyle() } }
     private let track = UIView()
-    private let thumb = DualBackdrop()
+    private let solid = UIView()
+    private let drop = DualBackdrop()
+    private let trackW: CGFloat = 50, trackH: CGFloat = 28, knobW: CGFloat = 31, knobH: CGFloat = 24, inset: CGFloat = 2
+    private var grabbing = false, moved = false
+    private var startX: CGFloat = 0, knobStart: CGFloat = 0, knobNow: CGFloat = 2
 
     init(on: Bool) {
-        super.init(frame: CGRect(x: 0, y: 0, width: 58, height: 34))
+        super.init(frame: CGRect(x: 0, y: 0, width: 50, height: 28))
         isOn = on
-        track.isUserInteractionEnabled = false
-        addSubview(track); addSubview(thumb)
-        thumb.capsule = true
+        track.isUserInteractionEnabled = false; solid.isUserInteractionEnabled = false
+        solid.backgroundColor = .white
+        drop.capsule = true; drop.alpha = 0
+        addSubview(track); addSubview(solid); addSubview(drop)
+        knobNow = restX(on)
+        let g = UILongPressGestureRecognizer(target: self, action: #selector(press(_:)))
+        g.minimumPressDuration = 0; g.allowableMovement = CGFloat.greatestFiniteMagnitude
+        addGestureRecognizer(g)
         restyle()
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
     }
     required init?(coder: NSCoder) { fatalError() }
-    override var intrinsicContentSize: CGSize { CGSize(width: 58, height: 34) }
+    override var intrinsicContentSize: CGSize { CGSize(width: trackW, height: trackH) }
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool { bounds.insetBy(dx: -8, dy: -8).contains(point) }
 
-    func set(_ v: Bool, animated: Bool = false) {
-        isOn = v
-        UIView.animate(withDuration: animated ? 0.3 : 0, delay: 0, usingSpringWithDamping: 0.75, initialSpringVelocity: 0.3, options: [.beginFromCurrentState]) {
-            self.layoutKnob(); self.track.backgroundColor = self.isOn ? dualYellow : UIColor(white: 1, alpha: 0.2)
-        }
+    private func restX(_ on: Bool) -> CGFloat { on ? bounds.width - knobW - inset : inset }
+    private func progress(_ x: CGFloat) -> CGFloat {
+        let lo = inset, hi = max(lo + 1, bounds.width - knobW - inset)
+        return max(0, min(1, (x - lo) / (hi - lo)))
+    }
+    private func mix(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
+        var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0, br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa); b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        return UIColor(red: ar + (br - ar) * t, green: ag + (bg - ag) * t, blue: ab + (bb - ab) * t, alpha: aa + (ba - aa) * t)
+    }
+    private func paintTrack(_ x: CGFloat) {
+        track.backgroundColor = mix(UIColor(white: 1, alpha: 0.2), dualYellow, progress(x))
+    }
+    private func place(_ x: CGFloat) {
+        knobNow = x
+        let h = bounds.height
+        solid.frame = CGRect(x: x, y: (h - knobH) / 2, width: knobW, height: knobH)
+        solid.layer.cornerRadius = knobH / 2
+        drop.frame = solid.frame.insetBy(dx: -7, dy: -5)
+        paintTrack(x)
     }
     private func restyle() {
-        thumb.apply(glass: glass, flat: .white, interactive: true)
-        track.backgroundColor = isOn ? dualYellow : UIColor(white: 1, alpha: 0.2)
+        drop.apply(glass: glass, flat: UIColor(white: 1, alpha: 0.55), interactive: true)
         setNeedsLayout()
-    }
-    private func layoutKnob() {
-        let h = bounds.height, kw: CGFloat = glass ? 40 : h - 6, kh: CGFloat = glass ? 28 : h - 6
-        let x = isOn ? bounds.width - kw - 3 : 3
-        thumb.frame = CGRect(x: x, y: (h - kh) / 2, width: kw, height: kh)
     }
     override func layoutSubviews() {
         super.layoutSubviews()
         track.frame = bounds; track.layer.cornerRadius = bounds.height / 2
-        layoutKnob()
+        if !grabbing { place(restX(isOn)) }
     }
-    @objc private func tap() { set(!isOn, animated: true); onChange?(isOn); sendActions(for: .valueChanged) }
+
+    /// 液态玻璃水滴 ⇄ 纯白旋钮
+    private func grab(_ on: Bool) {
+        grabbing = on
+        if glass {
+            if on { drop.transform = CGAffineTransform(scaleX: 0.85, y: 0.85) }
+            UIView.animate(withDuration: on ? 0.32 : 0.28, delay: 0, usingSpringWithDamping: on ? 0.55 : 0.8, initialSpringVelocity: 0.6, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.drop.alpha = on ? 1 : 0
+                self.drop.transform = .identity
+                self.solid.alpha = on ? 0 : 1
+            }
+        } else {
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.solid.transform = on ? CGAffineTransform(scaleX: 1.14, y: 1) : .identity
+            }
+        }
+    }
+
+    private func settle(_ newOn: Bool, animated: Bool) {
+        let changed = newOn != isOn
+        isOn = newOn
+        let x = restX(newOn)
+        let move = { self.place(x) }
+        if animated { UIView.animate(withDuration: 0.38, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.4, options: [.beginFromCurrentState, .allowUserInteraction], animations: move) } else { move() }
+        if changed { onChange?(isOn); sendActions(for: .valueChanged) }
+    }
+
+    func set(_ v: Bool, animated: Bool = false) {
+        guard !grabbing else { return }
+        isOn = v
+        if animated { UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.75, initialSpringVelocity: 0.3, options: [.beginFromCurrentState]) { self.place(self.restX(v)) } }
+        else { place(restX(v)) }
+    }
+
+    @objc private func press(_ g: UILongPressGestureRecognizer) {
+        let px = g.location(in: self).x
+        switch g.state {
+        case .began:
+            moved = false; startX = px; knobStart = knobNow
+            grab(true)
+        case .changed:
+            if abs(px - startX) > 3 { moved = true }
+            let x = min(max(knobStart + (px - startX), inset), bounds.width - knobW - inset)
+            place(x)
+        case .ended, .cancelled:
+            var newOn = isOn
+            if g.state == .ended {
+                if moved { newOn = progress(knobNow) > 0.5 } else { newOn = !isOn }
+            }
+            grab(false)
+            settle(newOn, animated: true)
+        default: break
+        }
+    }
 }
 
 // MARK: - 滑动条
@@ -229,6 +302,76 @@ final class DualCircleButton: UIButton {
     func setGlass(_ on: Bool) {
         glass = on
         bg.apply(glass: on, flat: UIColor(white: 1, alpha: 0.16), interactive: true)
+    }
+}
+
+// MARK: - 顶部规格胶囊（液态玻璃长条水滴，文字保持清晰）
+
+final class DualPillButton: UIButton {
+    private let bg = DualBackdrop()
+    private(set) var glass = false
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        bg.capsule = true
+        insertSubview(bg, at: 0)
+        setTitleColor(.white, for: .normal)
+        titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        contentEdgeInsets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+        setGlass(false)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func setGlass(_ on: Bool) {
+        glass = on
+        bg.apply(glass: on, flat: UIColor(white: 1, alpha: 0.16), interactive: true)
+    }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        bg.frame = bounds
+        sendSubviewToBack(bg)          // 文字始终在玻璃上面，不会被模糊
+    }
+}
+
+// MARK: - 提示条（放在取景框左上角；开液态玻璃时是玻璃，关闭时是普通深色面板）
+
+final class DualToastView: UIView {
+    private let bg = DualBackdrop(radius: 15)
+    private let label = UILabel()
+    private var glass = false
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        bg.translatesAutoresizingMaskIntoConstraints = false; addSubview(bg)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.textColor = .white; label.font = .systemFont(ofSize: 13, weight: .medium); label.numberOfLines = 0
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            bg.topAnchor.constraint(equalTo: topAnchor), bg.bottomAnchor.constraint(equalTo: bottomAnchor),
+            bg.leadingAnchor.constraint(equalTo: leadingAnchor), bg.trailingAnchor.constraint(equalTo: trailingAnchor),
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 7), label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13), label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -13)])
+        isUserInteractionEnabled = false
+        isHidden = true; alpha = 0
+        setGlass(false)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func setGlass(_ on: Bool) {
+        glass = on
+        bg.apply(glass: on, flat: UIColor(white: 0.1, alpha: 0.92))
+    }
+    func show(_ text: String) {
+        label.text = text
+        layer.removeAllAnimations()
+        isHidden = false
+        if alpha < 0.05 { alpha = 0; transform = CGAffineTransform(scaleX: 0.86, y: 0.86) }
+        UIView.animate(withDuration: glass ? 0.45 : 0.2, delay: 0, usingSpringWithDamping: glass ? 0.6 : 1, initialSpringVelocity: 0.5, options: [.beginFromCurrentState]) {
+            self.alpha = 1; self.transform = .identity
+        }
+    }
+    func hide() {
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState]) {
+            self.alpha = 0
+        } completion: { _ in
+            if self.alpha < 0.05 { self.isHidden = true }
+        }
     }
 }
 

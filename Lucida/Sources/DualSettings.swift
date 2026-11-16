@@ -35,70 +35,197 @@ final class DualSettings {
     var pipStyleSplit: Bool { get { d.bool(forKey: key("split")) } set { d.set(newValue, forKey: key("split")) } }
     var backIsMain: Bool { get { d.object(forKey: key("backMain")) as? Bool ?? true } set { d.set(newValue, forKey: key("backMain")) } }
 
+    /// 满帧画面运行录制：开 = 不因设备发烫自动降帧，预览和录制都按所选帧率；关 = 发烫时自动降到 30 帧并减半取景渲染，保证录完的视频流畅
+    var fullRate: Bool { get { d.bool(forKey: key("fullRate")) } set { d.set(newValue, forKey: key("fullRate")) } }
+
     var liveTimer: Bool { get { d.object(forKey: key("liveTimer")) as? Bool ?? true } set { d.set(newValue, forKey: key("liveTimer")) } }
 
     /// 前后摄像头各一套调色
-    let gradeBack = GradeState()
-    let gradeFront = GradeState()
+    let gradeBack = GradeState(storeKey: "lucida.dual2.gradeBack")
+    let gradeFront = GradeState(storeKey: "lucida.dual2.gradeFront")
     /// 调色盘正在改谁：0 后置 / 1 前置 / 2 同时
     var gradeTarget = 2
 }
 
 // MARK: - 调色（和主页面「调色板 / 质感 / 颗粒」同一套预设和参数）
 
-struct StylePreset {
-    let sid: String, name: String
-    let t: Double, c: Double, s: Double          // 色调 / 颜色 / 强度（-100…100，强度 0…100）
-    let cast: [Double], ca: Double
-    var fade: Double = 0, con: Double = 0
+// 预设（StylePreset / stylePresets）和质感系数（SharedGrade / texNames）在 SharedData.swift，由 shared/lucida-shared.json 生成，和网页 / 安卓共用。
+
+// MARK: - 预设顺序（和主页面「调色盘预设顺序」同一套：可拖动调整，「标准」始终排第一）
+
+enum PresetOrder {
+    private static let key = "lucida.dual2.presetOrder"
+    static var sids: [String] {
+        get {
+            let all = stylePresets.map { $0.sid }
+            if let o = UserDefaults.standard.array(forKey: key) as? [String], o.count == all.count, Set(o) == Set(all) { return pinStandard(o) }
+            return all
+        }
+        set { UserDefaults.standard.set(pinStandard(newValue), forKey: key) }
+    }
+    private static func pinStandard(_ o: [String]) -> [String] {
+        var r = o
+        if let i = r.firstIndex(of: "standard"), i > 0 { r.remove(at: i); r.insert("standard", at: 0) }
+        return r
+    }
+    static func reset() { UserDefaults.standard.removeObject(forKey: key) }
+    /// 按顺序排好的预设下标（指向 stylePresets）
+    static var indices: [Int] { sids.compactMap { sid in stylePresets.firstIndex { $0.sid == sid } } }
 }
 
-let stylePresets: [StylePreset] = [
-    StylePreset(sid: "standard", name: "标准", t: 0, c: 0, s: 100, cast: [1, 1, 1], ca: 0),
-    StylePreset(sid: "pearl", name: "珠光", t: 18, c: 0, s: 100, cast: [1, 0.66, 0.76], ca: 0.28, fade: 0.02),
-    StylePreset(sid: "coolrose", name: "冷调玫瑰色", t: -100, c: -100, s: 75, cast: [0.86, 0.7, 0.92], ca: 0.42),
-    StylePreset(sid: "amber", name: "琥珀色", t: 20, c: 20, s: 100, cast: [1, 0.7, 0.3], ca: 0.55),
-    StylePreset(sid: "gold", name: "金色", t: 20, c: 10, s: 85, cast: [1, 0.82, 0.3], ca: 0.5),
-    StylePreset(sid: "rosegold", name: "玫瑰金色", t: -20, c: -20, s: 75, cast: [1, 0.72, 0.62], ca: 0.45),
-    StylePreset(sid: "natural", name: "自然", t: -70, c: -15, s: 100, cast: [0.78, 0.84, 0.94], ca: 0.12),
-    StylePreset(sid: "cozy", name: "温馨", t: -75, c: -20, s: 100, cast: [1, 0.72, 0.74], ca: 0.38),
-    StylePreset(sid: "calm", name: "安静", t: 50, c: 45, s: 100, cast: [1, 0.9, 0.66], ca: 0.3),
-    StylePreset(sid: "ethereal", name: "缥缈", t: 68, c: -15, s: 100, cast: [0.72, 0.78, 1], ca: 0.2, fade: 0.06),
-    StylePreset(sid: "contrast", name: "反差色", t: -76, c: 19, s: 100, cast: [0.55, 0.82, 0.96], ca: 0.22, con: 0.28),
-    StylePreset(sid: "radiant", name: "耀目", t: 35, c: 30, s: 100, cast: [0.88, 0.78, 1], ca: 0.22),
-    StylePreset(sid: "vivid", name: "鲜明", t: -30, c: 33, s: 100, cast: [1, 1, 1], ca: 0, con: 0.16)
-]
+// MARK: - 质感 / 颗粒（和主页面 texParams 一模一样：标准 / 柔肤 / 光晕 / 胶片 + 强度，颗粒单独一条）
 
-/// 调色状态：预设 + 调色盘落点（x = 颜色，y = 色调，-1…1）+ 强度（0…1）+ 质感 + 颗粒。线程安全（预览线程读、界面线程写）。
+struct FilterParams {
+    var con = 0.0, sat = 0.0, hi = 0.0, sh = 0.0, tmp = 0.0, cl = 0.0, sp = 0.0, gr = 0.0, hal = 0.0
+    var tint = [0.0, 0.0, 0.0], shd = [0.0, 0.0, 0.0]
+}
+
+func texParams(tex: Int, tv: Double, gr: Double) -> FilterParams? {
+    let on = tv > SharedGrade.texOn
+    if !on && gr < SharedGrade.grainOn { return nil }
+    var o = FilterParams()
+    if on {
+        let ti = max(0, min(SharedGrade.texCoef.count - 1, tex)), k = SharedGrade.texCoef[ti], d = SharedGrade.texShd[ti]
+        // 列顺序见 SharedGrade.texKeys：con sat hi sh tmp cl sp gr hal
+        o.con = k[0] * tv; o.sat = k[1] * tv; o.hi = k[2] * tv; o.sh = k[3] * tv; o.tmp = k[4] * tv
+        o.cl = k[5] * tv; o.sp = k[6] * tv; o.gr = k[7] * tv; o.hal = k[8] * tv
+        o.shd = [d[0] * tv, d[1] * tv, d[2] * tv]
+    }
+    o.gr += gr * SharedGrade.grainK
+    return o
+}
+
+/// 逐像素的颜色运算：把主页面着色器（色偏 → 色调 → 对比 → 褪色 → 带肤色保护的自然饱和度 → 滤镜影调）照抄一遍，
+/// 做成 3D 色彩查找表交给 CoreImage（CIColorCube），这样原生双摄的颜色和主页面一致。
+struct GradeMath {
+    var tnt = [1.0, 1.0, 1.0]
+    var amt = 0.0, tone = 0.0, sat = 0.0, con = 0.0, fade = 0.0
+    var fp: FilterParams?
+
+    private func sstep(_ a: Double, _ b: Double, _ x: Double) -> Double { let t = max(0, min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
+    private func lum(_ r: Double, _ g: Double, _ b: Double) -> Double { 0.2126 * r + 0.7152 * g + 0.0722 * b }
+    private func cl(_ v: Double) -> Double { max(0, min(1, v)) }
+
+    func shade(_ r0: Double, _ g0: Double, _ b0: Double, pw: Double) -> (Double, Double, Double) {
+        var r = r0, g = g0, b = b0
+        var y = lum(r, g, b)
+        let mx = max(r, max(g, b)), mn = min(r, min(g, b)), ch = mx - mn, sn = ch / (mx + 1e-4)
+        var h = 0.0
+        if ch > 1e-4 {
+            if mx == r { h = ((g - b) / ch).truncatingRemainder(dividingBy: 6); if h < 0 { h += 6 } }
+            else if mx == g { h = (b - r) / ch + 2 } else { h = (r - g) / ch + 4 }
+            h /= 6
+            if h > 0.9 { h -= 1 }
+        }
+        let skin = sstep(-0.01, 0.03, h) * (1 - sstep(0.10, 0.15, h)) * sstep(0.08, 0.22, sn) * (1 - sstep(0.6, 0.8, sn))
+        let mid = 4 * y * (1 - y)
+        let tl = lum(tnt[0], tnt[1], tnt[2])
+        let k = amt * 0.5 * (0.35 + 0.65 * mid) * (1 - 0.5 * skin)
+        r = cl(r + (tnt[0] - tl) * k); g = cl(g + (tnt[1] - tl) * k); b = cl(b + (tnt[2] - tl) * k)
+        r = pow(r, pw); g = pow(g, pw); b = pow(b, pw)
+        let cc = con + max(-tone, 0) * 0.35
+        func curve(_ v: Double) -> Double {
+            if cc >= 0 { let s = v * v * (3 - 2 * v); let t = max(0, min(1, cc)); return v + (s - v) * t }
+            return 0.5 + (v - 0.5) * (1 + cc * 0.7)
+        }
+        r = curve(r); g = curve(g); b = curve(b)
+        r = fade + r * (1 - fade); g = fade + g * (1 - fade); b = fade + b * (1 - fade)
+        y = lum(r, g, b)
+        let m2 = max(r, max(g, b)), n2 = min(r, min(g, b)), s2 = (m2 - n2) / (m2 + 1e-4)
+        let prot = (1 - 0.45 * skin) * (1 - sstep(0.82, 1, y)) * sstep(0, 0.12, y)
+        let a2 = sat > 0 ? 1 + sat * 0.95 * (1 - 0.55 * s2) * prot : 1 + sat * 0.95
+        r = cl(y + (r - y) * a2); g = cl(y + (g - y) * a2); b = cl(y + (b - y) * a2)
+        if let f = fp {
+            let yy = lum(r, g, b), wH = sstep(0.45, 1, yy), wS = 1 - sstep(0, 0.55, yy)
+            let kh = 1 + f.hi * 0.5 * wH, ks = 1 + f.sh * 0.8 * wS
+            r *= kh * ks; g *= kh * ks; b *= kh * ks
+            r *= 1 + f.tmp * 0.5; b *= 1 - f.tmp * 0.5
+            r += f.tint[0] + f.shd[0] * wS; g += f.tint[1] + f.shd[1] * wS; b += f.tint[2] + f.shd[2] * wS
+            let kc = 1 + f.con * 0.8
+            r = 0.5 + (r - 0.5) * kc; g = 0.5 + (g - 0.5) * kc; b = 0.5 + (b - 0.5) * kc
+            let y2 = lum(r, g, b), ksat = 1 + f.sat
+            r = cl(y2 + (r - y2) * ksat); g = cl(y2 + (g - y2) * ksat); b = cl(y2 + (b - y2) * ksat)
+        }
+        return (cl(r), cl(g), cl(b))
+    }
+
+    static let dim = 33
+
+    func makeCube() -> Data {
+        let n = GradeMath.dim
+        var out = [Float](repeating: 1, count: n * n * n * 4)
+        let pw = pow(2.0, -tone * 0.55)
+        var i = 0
+        let d = Double(n - 1)
+        for bi in 0..<n {
+            for gi in 0..<n {
+                for ri in 0..<n {
+                    let (r, g, b) = shade(Double(ri) / d, Double(gi) / d, Double(bi) / d, pw: pw)
+                    out[i] = Float(r); out[i + 1] = Float(g); out[i + 2] = Float(b); out[i + 3] = 1
+                    i += 4
+                }
+            }
+        }
+        return out.withUnsafeBufferPointer { Data(buffer: $0) }
+    }
+}
+
+/// 调色状态：预设 + 调色盘落点（x = 颜色，y = 色调，-1…1）+ 强度（0…1）+ 质感（4 种风格各自的强度）+ 颗粒。
+/// 线程安全（预览线程读、界面线程写）。
 final class GradeState {
     private let lock = NSLock()
     private var _preset = 0
     private var _x = 0.0, _y = 0.0, _str = 1.0
-    private var _contrast = 0.0, _clarity = 0.0, _sharp = 0.0      // 质感
-    private var _grainAmt = 0.0, _grainSize = 0.3                  // 颗粒
+    private var _tex = 0, _tv = 0.0, _tvm = [0.0, 0.0, 0.0, 0.0]      // 质感风格 / 强度 / 各风格各自的强度
+    private var _gr = 0.0                                              // 颗粒
+    private var version = 0
+    private var cubeKey = -1, cube: Data?
+    private let storeKey: String?
+    private var saveWork: DispatchWorkItem?
+
+    init(storeKey: String? = nil) {
+        self.storeKey = storeKey
+        if let k = storeKey, let d = UserDefaults.standard.dictionary(forKey: k) {
+            _preset = max(0, min(stylePresets.count - 1, (d["p"] as? Int) ?? 0))
+            _x = max(-1, min(1, (d["x"] as? Double) ?? 0)); _y = max(-1, min(1, (d["y"] as? Double) ?? 0)); _str = max(0, min(1, (d["s"] as? Double) ?? 1))
+            _tex = max(0, min(3, (d["t"] as? Int) ?? 0)); _tv = max(0, min(1, (d["tv"] as? Double) ?? 0)); _gr = max(0, min(1, (d["gr"] as? Double) ?? 0))
+            if let m = d["tvm"] as? [Double], m.count == 4 { _tvm = m }
+        }
+    }
 
     struct Snapshot {
-        var preset: StylePreset
+        var preset: StylePreset, presetIndex: Int
         var x: Double, y: Double, str: Double
-        var contrast: Double, clarity: Double, sharp: Double
-        var grainAmt: Double, grainSize: Double
+        var tex: Int, tv: Double, tvm: [Double]
+        var gr: Double
     }
 
     func snapshot() -> Snapshot {
         lock.lock(); defer { lock.unlock() }
-        return Snapshot(preset: stylePresets[_preset], x: _x, y: _y, str: _str, contrast: _contrast, clarity: _clarity,
-                        sharp: _sharp, grainAmt: _grainAmt, grainSize: _grainSize)
+        return Snapshot(preset: stylePresets[_preset], presetIndex: _preset, x: _x, y: _y, str: _str, tex: _tex, tv: _tv, tvm: _tvm, gr: _gr)
     }
 
     var presetIndex: Int { lock.lock(); defer { lock.unlock() }; return _preset }
 
+    private func touched() {
+        version += 1
+        guard let k = storeKey else { return }
+        saveWork?.cancel()
+        let w = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            let s = self.snapshot()
+            UserDefaults.standard.set(["p": s.presetIndex, "x": s.x, "y": s.y, "s": s.str, "t": s.tex, "tv": s.tv, "tvm": s.tvm, "gr": s.gr] as [String: Any], forKey: k)
+        }
+        saveWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: w)
+    }
+
     /// 整套参数照抄另一个状态（「同时更改」时用）
     func copy(from o: GradeState) {
-        let s = o.snapshot(), i = o.presetIndex
+        let s = o.snapshot()
         lock.lock()
-        _preset = i; _x = s.x; _y = s.y; _str = s.str; _contrast = s.contrast; _clarity = s.clarity; _sharp = s.sharp
-        _grainAmt = s.grainAmt; _grainSize = s.grainSize
-        lock.unlock()
+        _preset = s.presetIndex; _x = s.x; _y = s.y; _str = s.str; _tex = s.tex; _tv = s.tv; _tvm = s.tvm; _gr = s.gr
+        touched(); lock.unlock()
     }
 
     func selectPreset(_ i: Int) {
@@ -106,92 +233,98 @@ final class GradeState {
         _preset = max(0, min(stylePresets.count - 1, i))
         let p = stylePresets[_preset]
         _x = p.c / 100; _y = p.t / 100; _str = p.s / 100
+        touched()
     }
-    func setPad(x: Double, y: Double) { lock.lock(); _x = max(-1, min(1, x)); _y = max(-1, min(1, y)); lock.unlock() }
-    func setStrength(_ v: Double) { lock.lock(); _str = max(0, min(1, v)); lock.unlock() }
-    func setTexture(contrast: Double? = nil, clarity: Double? = nil, sharp: Double? = nil) {
+    func setPad(x: Double, y: Double) { lock.lock(); _x = max(-1, min(1, x)); _y = max(-1, min(1, y)); touched(); lock.unlock() }
+    func setStrength(_ v: Double) { lock.lock(); _str = max(0, min(1, v)); touched(); lock.unlock() }
+    /// 切换质感风格：每种风格记住自己的强度
+    func setTexStyle(_ t: Int) {
         lock.lock()
-        if let v = contrast { _contrast = max(-1, min(1, v)) }
-        if let v = clarity { _clarity = max(0, min(1, v)) }
-        if let v = sharp { _sharp = max(0, min(1, v)) }
-        lock.unlock()
+        _tvm[_tex] = _tv; _tex = max(0, min(3, t)); _tv = _tvm[_tex]
+        touched(); lock.unlock()
     }
-    func setGrain(amount: Double? = nil, size: Double? = nil) {
-        lock.lock()
-        if let v = amount { _grainAmt = max(0, min(1, v)) }
-        if let v = size { _grainSize = max(0, min(1, v)) }
-        lock.unlock()
-    }
+    func setTexStrength(_ v: Double) { lock.lock(); _tv = max(0, min(1, v)); _tvm[_tex] = _tv; touched(); lock.unlock() }
+    func resetTexture() { lock.lock(); _tex = 0; _tv = 0; _tvm = [0, 0, 0, 0]; touched(); lock.unlock() }
+    func setGrain(_ v: Double) { lock.lock(); _gr = max(0, min(1, v)); touched(); lock.unlock() }
     func reset() {
-        lock.lock(); _preset = 0; _x = 0; _y = 0; _str = 1; _contrast = 0; _clarity = 0; _sharp = 0; _grainAmt = 0; _grainSize = 0.3; lock.unlock()
+        lock.lock(); _preset = 0; _x = 0; _y = 0; _str = 1; _tex = 0; _tv = 0; _tvm = [0, 0, 0, 0]; _gr = 0; touched(); lock.unlock()
+    }
+
+    private func math(_ s: Snapshot) -> GradeMath {
+        let p = s.preset
+        return GradeMath(tnt: p.cast, amt: p.ca * s.str, tone: s.y * s.str * SharedGrade.toneK, sat: s.x * s.str * SharedGrade.satK, con: p.con * s.str, fade: p.fade * s.str * SharedGrade.fadeK,
+                         fp: texParams(tex: s.tex, tv: s.tv, gr: s.gr))
     }
 
     var isNeutral: Bool {
-        let s = snapshot()
-        let p = s.preset
-        let amt = abs(p.ca * s.str), tone = abs(s.y * s.str * 0.6), sat = abs(s.x * s.str * 0.8), con = abs(p.con * s.str), fade = p.fade * s.str
-        return amt + tone + sat + con + fade < 0.004 && abs(s.contrast) + s.clarity + s.sharp + s.grainAmt < 0.004
+        let s = snapshot(), m = math(s)
+        let color = abs(m.amt) + abs(m.tone) + abs(m.sat) + abs(m.con) + m.fade
+        return color < 0.004 && m.fp == nil
     }
 
-    // MARK: 应用到画面（把主页面着色器的算法折算成 CoreImage 滤镜链）
+    // MARK: 应用到画面（颜色部分 = 3D 查找表；质感里的锐化 / 柔化 / 光晕 / 颗粒是空间运算，用 CoreImage 滤镜）
 
     func apply(_ input: CIImage) -> CIImage {
-        let s = snapshot()
-        let p = s.preset
-        var img = input
+        lock.lock()
+        let s = Snapshot(preset: stylePresets[_preset], presetIndex: _preset, x: _x, y: _y, str: _str, tex: _tex, tv: _tv, tvm: _tvm, gr: _gr)
+        let ver = version
+        var data = cube
+        let have = cubeKey == ver
+        lock.unlock()
+        let m = math(s)
+        if !have || data == nil {
+            data = m.makeCube()
+            lock.lock(); cube = data; cubeKey = ver; lock.unlock()
+        }
         let ext = input.extent
-        let amt = p.ca * s.str, tone = s.y * s.str * 0.6, sat = s.x * s.str * 0.8, con = p.con * s.str, fade = p.fade * s.str
+        var img = input
+        let colorOn = abs(m.amt) + abs(m.tone) + abs(m.sat) + abs(m.con) + m.fade > 0.004 || m.fp != nil
+        if colorOn, let d = data {
+            img = img.applyingFilter("CIColorCube", parameters: ["inputCubeDimension": GradeMath.dim, "inputCubeData": d])
+        }
+        guard let f = m.fp else { return img.cropped(to: ext) }
+        let px = max(1, min(ext.width, ext.height) / 1080)
 
-        // 1. 色偏：给中间调加一点「预设的颜色」
-        if amt > 0.002 {
-            let l = 0.2126 * p.cast[0] + 0.7152 * p.cast[1] + 0.0722 * p.cast[2]
-            let k = amt * 0.3
-            img = img.applyingFilter("CIColorMatrix", parameters: [
-                "inputRVector": CIVector(x: 1, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: 1, z: 0, w: 0),
-                "inputBVector": CIVector(x: 0, y: 0, z: 1, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-                "inputBiasVector": CIVector(x: CGFloat((p.cast[0] - l) * k), y: CGFloat((p.cast[1] - l) * k), z: CGFloat((p.cast[2] - l) * k), w: 0)])
+        // 锐度 / 柔化（小半径）、清晰度（大半径）：正值反锐化，负值向模糊图靠拢
+        func detail(_ v: Double, radius: CGFloat, boost: Double) {
+            if v > 0.01 {
+                img = img.applyingFilter("CIUnsharpMask", parameters: ["inputRadius": radius, "inputIntensity": v * boost])
+            } else if v < -0.01 {
+                let w = CGFloat(min(1, -v))
+                let blur = img.clampedToExtent().applyingGaussianBlur(sigma: Double(radius)).cropped(to: ext)
+                let faded = blur.applyingFilter("CIColorMatrix", parameters: [
+                    "inputRVector": CIVector(x: 1, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: 1, z: 0, w: 0),
+                    "inputBVector": CIVector(x: 0, y: 0, z: 1, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: w)])
+                img = faded.composited(over: img).cropped(to: ext)
+            }
         }
-        // 2. 色调：整体明暗曲线
-        if abs(tone) > 0.002 {
-            img = img.applyingFilter("CIGammaAdjust", parameters: ["inputPower": pow(2.0, -tone * 0.55)])
+        detail(f.sp, radius: 1.6 * px, boost: 1.0)
+        detail(f.cl, radius: 6.5 * px, boost: 1.0)
+
+        // 光晕：模糊后取亮部，染成偏暖的红橙色叠回去
+        if f.hal > 0.01 {
+            let blur = img.clampedToExtent().applyingGaussianBlur(sigma: Double(6.5 * px)).cropped(to: ext)
+            let k = 2.2 * f.hal
+            func row(_ w: Double) -> CIVector { CIVector(x: CGFloat(0.2126 * k * w), y: CGFloat(0.7152 * k * w), z: CGFloat(0.0722 * k * w), w: 0) }
+            let glow = blur.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": row(1.0), "inputGVector": row(0.42), "inputBVector": row(0.3),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+                "inputBiasVector": CIVector(x: CGFloat(-0.6 * k), y: CGFloat(-0.6 * k * 0.42), z: CGFloat(-0.6 * k * 0.3), w: 1)])
+                .applyingFilter("CIColorClamp", parameters: ["inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0), "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1)])
+            img = glow.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: img]).cropped(to: ext)
         }
-        // 3. 对比 + 4. 饱和（预设对比、色调带来的对比、质感里的对比叠加）
-        var cc = con + max(-tone, 0) * 0.35 + s.contrast * 0.6
-        cc = max(-1, min(1, cc))
-        let contrast = cc >= 0 ? 1 + cc * 0.8 : 1 + cc * 0.7
-        let satur = sat > 0 ? 1 + sat * 0.7 : 1 + sat * 0.95
-        if abs(contrast - 1) > 0.002 || abs(satur - 1) > 0.002 {
-            img = img.applyingFilter("CIColorControls", parameters: ["inputContrast": contrast, "inputSaturation": max(0, satur), "inputBrightness": 0])
-        }
-        // 5. 褪色（抬黑）
-        if fade > 0.002 {
-            img = img.applyingFilter("CIColorMatrix", parameters: [
-                "inputRVector": CIVector(x: CGFloat(1 - fade), y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: CGFloat(1 - fade), z: 0, w: 0),
-                "inputBVector": CIVector(x: 0, y: 0, z: CGFloat(1 - fade), w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-                "inputBiasVector": CIVector(x: CGFloat(fade), y: CGFloat(fade), z: CGFloat(fade), w: 0)])
-        }
-        // 6. 质感：清晰度（大半径反锐化）+ 锐度（小半径）
-        let scale = max(ext.width, ext.height) / 1000
-        if s.clarity > 0.01 {
-            img = img.applyingFilter("CIUnsharpMask", parameters: ["inputRadius": 18 * scale, "inputIntensity": s.clarity * 0.9])
-        }
-        if s.sharp > 0.01 {
-            img = img.applyingFilter("CIUnsharpMask", parameters: ["inputRadius": 2.2 * scale, "inputIntensity": s.sharp * 1.4])
-        }
-        // 7. 颗粒：随机噪点按柔光叠上去
-        if s.grainAmt > 0.01, let noise = CIFilter(name: "CIRandomGenerator")?.outputImage {
-            let k = CGFloat(1 + s.grainSize * 2.5) * max(1, scale)
+
+        // 颗粒：随机噪点按柔光叠上去（强度 = 主页面的 gr 参数）
+        if f.gr > 0.004, let noise = CIFilter(name: "CIRandomGenerator")?.outputImage {
+            let amp = CGFloat(min(1, f.gr * 3))
             let off = CGAffineTransform(translationX: CGFloat.random(in: 0...400), y: CGFloat.random(in: 0...400))
-            var g = noise.transformed(by: off).transformed(by: CGAffineTransform(scaleX: k, y: k))
-                .applyingFilter("CIColorControls", parameters: ["inputSaturation": 0])
-            let a = CGFloat(s.grainAmt * 0.9)
-            g = g.applyingFilter("CIColorMatrix", parameters: [
-                "inputRVector": CIVector(x: a, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: a, z: 0, w: 0),
-                "inputBVector": CIVector(x: 0, y: 0, z: a, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-                "inputBiasVector": CIVector(x: 0.5 * (1 - a), y: 0.5 * (1 - a), z: 0.5 * (1 - a), w: 0)]).cropped(to: ext)
+            var g = noise.transformed(by: off)
+                .applyingFilter("CIColorMatrix", parameters: [
+                    "inputRVector": CIVector(x: amp, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: amp, y: 0, z: 0, w: 0),
+                    "inputBVector": CIVector(x: amp, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                    "inputBiasVector": CIVector(x: 0.5 * (1 - amp), y: 0.5 * (1 - amp), z: 0.5 * (1 - amp), w: 0)])
+            g = g.cropped(to: ext)
             img = g.applyingFilter("CISoftLightBlendMode", parameters: [kCIInputBackgroundImageKey: img]).cropped(to: ext)
-            // CISoftLightBlendMode：输入是前景（噪点），背景是画面
-            img = img.cropped(to: ext)
         }
         return img.cropped(to: ext)
     }

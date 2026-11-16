@@ -129,14 +129,14 @@ final class DualPalettePanel: UIView {
         } else {
             var rows: [UIView] = []
             if tab == 1 {
-                rows = [
-                    sliderRow("对比度", min: -1, max: 1, value: snap.contrast, set: { $0.setTexture(contrast: $1) }, reset: { $0.setTexture(contrast: 0) }),
-                    sliderRow("清晰度", min: 0, max: 1, value: snap.clarity, set: { $0.setTexture(clarity: $1) }, reset: { $0.setTexture(clarity: 0) }),
-                    sliderRow("锐度", min: 0, max: 1, value: snap.sharp, set: { $0.setTexture(sharp: $1) }, reset: { $0.setTexture(sharp: 0) })]
+                // 质感：标准 / 柔肤 / 光晕 / 胶片（和主页面一样），每种风格各自记住强度
+                let seg = GlassSegmented(items: texNames, selected: snap.tex); seg.glass = glass
+                seg.onChange = { [weak self] i in self?.edit { $0.setTexStyle(i) }; self?.rebuild() }
+                seg.heightAnchor.constraint(equalToConstant: 32).isActive = true
+                rows = [seg,
+                        sliderRow("强度", min: 0, max: 1, value: snap.tv, set: { $0.setTexStrength($1) }, reset: { $0.resetTexture() })]
             } else {
-                rows = [
-                    sliderRow("数量", min: 0, max: 1, value: snap.grainAmt, set: { $0.setGrain(amount: $1) }, reset: { $0.setGrain(amount: 0) }),
-                    sliderRow("大小", min: 0, max: 1, value: snap.grainSize, set: { $0.setGrain(size: $1) }, reset: { $0.setGrain(size: 0.3) })]
+                rows = [sliderRow("强度", min: 0, max: 1, value: snap.gr, set: { $0.setGrain($1) }, reset: { $0.setGrain(0) })]
             }
             let col = UIStackView(arrangedSubviews: rows); col.axis = .vertical; col.spacing = 8
             row.addArrangedSubview(col)

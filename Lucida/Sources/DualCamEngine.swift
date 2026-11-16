@@ -479,6 +479,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private var pressureObs: [NSKeyValueObservation] = []
     private var thermalObs: NSObjectProtocol?
     private var throttled = false
+    /// 满帧画面运行录制（设置里的开关）：开 = 不因发烫降帧、取景每一帧都渲染；关 = 发烫自动降到 30 帧，60 帧时取景隔帧刷新
+    var fullRate = false
 
     private func watchPressure() {
         pressureObs.removeAll()
@@ -499,7 +501,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     private func throttle(_ why: String) {
         sessionQueue.async {
-            guard !self.throttled, self.actualBackFps > 30 else { return }
+            guard !self.fullRate, !self.throttled, self.actualBackFps > 30 else { return }
             self.throttled = true
             let t = CMTime(value: 1, timescale: 30)
             for d in [self.backDevice, self.frontDevice].compactMap({ $0 }) {
@@ -526,7 +528,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         lock.lock(); lastBack = pb; let f = lastFront; lock.unlock()
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         previewN += 1
-        if actualBackFps <= 35 || previewN % 2 == 0 { renderPreview(back: pb, front: f, pts: pts) }     // 60 帧时预览隔帧刷新，把算力留给录像
+        if fullRate || actualBackFps <= 35 || previewN % 2 == 0 { renderPreview(back: pb, front: f, pts: pts) }     // 60 帧时预览隔帧刷新，把算力留给录像
         if wantRecord || isRecording { recordFrame(pts) }
         collectLive(back: pb, front: f, pts: pts)
     }

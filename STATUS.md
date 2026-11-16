@@ -1,3 +1,8 @@
+# 状态（11.3.0 · 长期计划 A1 共享数据）
+- 本版只做「共享数据」：预设 / 质感 / 颗粒 / 强度系数统一放在 `shared/lucida-shared.json`，网页、iOS（SharedData.swift）、安卓（SharedData.java）都由 `tools/gen_shared.py` 生成；用户可见功能不变。
+- 已验证：网页新旧版 28080 组参数完全一致；安卓 GradeState 与网页 22464 组最大误差 4e-8（在 JVM 上实际跑过）；iOS 生成文件与 json 逐项一致（脚本解析对照），**但 Swift 未编译、未运行**。
+- 进度见 PLAN.md。
+
 # 实现状态（如实说明）
 
 本工程是在 Linux 沙盒里写的：**没有 Swift 编译器、没有 Xcode、没有 iPhone**，所以 Swift 代码没有编译过，也没有在真机上跑过。
@@ -48,3 +53,14 @@
 - 相册：最新在左上；2 列 × 3 行 = 每屏 6 张；双指捏合 / 张开缩放。
 - 4K60 前置掉帧：`systemPressureState` + `thermalState` 触发降到 30 帧；60 帧下取景渲染减半。
 - **未验证**：本环境无 Swift 编译器，只做了语法检查 + 符号交叉检查，需 Xcode 编译并真机测试；前置摄像头对焦点坐标映射为推算、未真机验证；4K60 前置掉帧的根因在这里无法复现，只做了降风险处理；液态玻璃仅 iOS 26+。
+
+## 11.2.1（11 月 16 日改进）
+- **编译错误修复**：`GlassSegmented.selected` 与 `UIControl.selected` 撞名 → `selectedIndex`（你修过的那处，已并入）。
+- 版本号三处同步：`project.yml` MARKETING_VERSION / CURRENT_PROJECT_VERSION（30，大于上一版）、`DeviceProbe.swift`、README；脚本 `tools/bump_version.py` 一次改完并校验。
+- 开关（GlassSwitch）：50×28 紧凑尺寸；按住 / 点击 / 拖动时旋钮变液态玻璃水滴，松手变纯白旋钮（未开玻璃时只有白旋钮）。
+- 调色盘：颜色部分照抄主页面着色器（`GradeMath` → 33³ 的 3D 查找表 → `CIColorCube`）；质感 = 标准 / 柔肤 / 光晕 / 胶片 + 强度（各自记忆），颗粒 = 强度；锐化 / 柔化 / 光晕 / 颗粒是 CoreImage 空间滤镜，**与主页面着色器是近似、不是逐像素一致**。前后摄各一套并保存到 UserDefaults。
+- 预设顺序：更多设置 → 调色盘预设顺序（`PresetOrder`，拖动排序，标准固定第一，可恢复默认），左右滑动按此顺序。
+- 满帧画面运行录制：`DualSettings.fullRate` → `DualCamEngine.fullRate`（开 = 不降帧、取景不隔帧）。
+- 提示条：`DualToastView`，统一放取景框左上角（与实况计时同一个 UIStackView），玻璃 / 深色面板随液态玻璃开关。
+- 液态玻璃：顶部规格胶囊 `DualPillButton`（之前玻璃层没设 frame，所以看不见）；规格面板展开 / 收回的 Q 弹动画（仅玻璃开启时）。
+- **未经编译**：本次新增 / 改动的 Swift 没有过 Xcode；最没把握的 3 处：`DualSettings.swift`（GradeState.apply 的 CoreImage 链）、`DualGlass.swift`（GlassSwitch 手势与动画）、`DualCamViewController.swift`（setSpecPanel / hintStack）。

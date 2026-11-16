@@ -2829,19 +2829,19 @@ const _swap0=swap;swap=async function(...a){FOC.locked=false;$('#focus').classLi
    底部滑条「调色盘」= 整个风格的施加强度（0–100）。每个风格有自己的默认落点、默认强度和调色盘配色。
    tint = 调色盘的配色（tint2 = 右下角第二色）；cast = 对画面施加的底色色偏，ca = 色偏量；con/fade = 反差 / 褪色。 */
 const PRESETS=[
-  {sid:'standard',name:'标准',grp:'底色',t:0,c:0,s:100,tint:[.38,.46,.62],cast:[1,1,1],ca:0},
-  {sid:'pearl',name:'珠光',grp:'底色',t:18,c:0,s:100,tint:[.62,.2,.3],cast:[1,.66,.76],ca:.28,fade:.02},
-  {sid:'coolrose',name:'冷调玫瑰色',grp:'底色',t:-100,c:-100,s:75,tint:[.42,.5,.72],cast:[.86,.7,.92],ca:.42},
-  {sid:'amber',name:'琥珀色',grp:'底色',t:20,c:20,s:100,tint:[.72,.45,.2],cast:[1,.7,.3],ca:.55},
-  {sid:'gold',name:'金色',grp:'底色',t:20,c:10,s:85,tint:[.85,.58,.08],cast:[1,.82,.3],ca:.5},
-  {sid:'rosegold',name:'玫瑰金色',grp:'底色',t:-20,c:-20,s:75,tint:[.66,.4,.3],cast:[1,.72,.62],ca:.45},
-  {sid:'natural',name:'自然',grp:'心情',t:-70,c:-15,s:100,tint:[.34,.4,.58],cast:[.78,.84,.94],ca:.12},
-  {sid:'cozy',name:'温馨',grp:'心情',t:-75,c:-20,s:100,tint:[.84,.42,.12],cast:[1,.72,.74],ca:.38},
-  {sid:'calm',name:'安静',grp:'心情',t:50,c:45,s:100,tint:[.46,.6,.5],cast:[1,.9,.66],ca:.3},
-  {sid:'ethereal',name:'缥缈',grp:'心情',t:68,c:-15,s:100,tint:[.2,.42,.78],cast:[.72,.78,1],ca:.2,fade:.06},
-  {sid:'contrast',name:'反差色',grp:'心情',t:-76,c:19,s:100,tint:[.1,.55,.7],cast:[.55,.82,.96],ca:.22,con:.28},
-  {sid:'radiant',name:'耀目',grp:'心情',t:35,c:30,s:100,tint:[.3,.5,.72],cast:[.88,.78,1],ca:.22},
-  {sid:'vivid',name:'鲜明',grp:'心情',t:-30,c:33,s:100,tint:[.78,.2,.2],tint2:[.1,.6,.55],cast:[1,1,1],ca:0,con:.16}
+  {sid:'standard',name:'标准',grp:'底色',t:0,c:0,s:100,tint:[0.38,0.46,0.62],cast:[1,1,1],ca:0},
+  {sid:'pearl',name:'珠光',grp:'底色',t:18,c:0,s:100,tint:[0.62,0.2,0.3],cast:[1,0.66,0.76],ca:0.28,fade:0.02},
+  {sid:'coolrose',name:'冷调玫瑰色',grp:'底色',t:-100,c:-100,s:75,tint:[0.42,0.5,0.72],cast:[0.86,0.7,0.92],ca:0.42},
+  {sid:'amber',name:'琥珀色',grp:'底色',t:20,c:20,s:100,tint:[0.72,0.45,0.2],cast:[1,0.7,0.3],ca:0.55},
+  {sid:'gold',name:'金色',grp:'底色',t:20,c:10,s:85,tint:[0.85,0.58,0.08],cast:[1,0.82,0.3],ca:0.5},
+  {sid:'rosegold',name:'玫瑰金色',grp:'底色',t:-20,c:-20,s:75,tint:[0.66,0.4,0.3],cast:[1,0.72,0.62],ca:0.45},
+  {sid:'natural',name:'自然',grp:'心情',t:-70,c:-15,s:100,tint:[0.34,0.4,0.58],cast:[0.78,0.84,0.94],ca:0.12},
+  {sid:'cozy',name:'温馨',grp:'心情',t:-75,c:-20,s:100,tint:[0.84,0.42,0.12],cast:[1,0.72,0.74],ca:0.38},
+  {sid:'calm',name:'安静',grp:'心情',t:50,c:45,s:100,tint:[0.46,0.6,0.5],cast:[1,0.9,0.66],ca:0.3},
+  {sid:'ethereal',name:'缥缈',grp:'心情',t:68,c:-15,s:100,tint:[0.2,0.42,0.78],cast:[0.72,0.78,1],ca:0.2,fade:0.06},
+  {sid:'contrast',name:'反差色',grp:'心情',t:-76,c:19,s:100,tint:[0.1,0.55,0.7],cast:[0.55,0.82,0.96],ca:0.22,con:0.28},
+  {sid:'radiant',name:'耀目',grp:'心情',t:35,c:30,s:100,tint:[0.3,0.5,0.72],cast:[0.88,0.78,1],ca:0.22},
+  {sid:'vivid',name:'鲜明',grp:'心情',t:-30,c:33,s:100,tint:[0.78,0.2,0.2],tint2:[0.1,0.6,0.55],cast:[1,1,1],ca:0,con:0.16}
 ];
 PRESETS.forEach(p=>{p.x=p.c/100;p.y=p.t/100;p.str=p.s/100});
 const rgbCss=c=>`rgb(${c.map(v=>Math.round(v*255)).join(',')})`;
@@ -2855,7 +2855,8 @@ try{
   if(Array.isArray(o)&&o.length===PRESETS.length&&PRESETS.every(p=>o.includes(p.sid)))ST.order=o;
 }catch(e){}
 /* 预设的默认落点会在选中时套用；这里把「风格 + 调色盘落点 + 强度」折算成着色器参数 */
-const gradeParams=()=>{const c=ST.cur,p=styleBase(c.sid),s=c.str;return{tint:p.cast,amt:p.ca*s,tone:c.y*s*.6,sat:c.x*s*.8,con:(p.con||0)*s,mono:0,fade:(p.fade||0)*s,fp:(typeof mergeFp==='function'?mergeFp(typeof filterParams==='function'?filterParams():null,texParams(c)):(typeof filterParams==='function'?filterParams():null))}};
+const GRADE_K={tone:0.6,sat:0.8,fade:1};
+const gradeParams=()=>{const c=ST.cur,p=styleBase(c.sid),s=c.str;return{tint:p.cast,amt:p.ca*s,tone:c.y*s*GRADE_K.tone,sat:c.x*s*GRADE_K.sat,con:(p.con||0)*s,mono:0,fade:(p.fade||0)*s*GRADE_K.fade,fp:(typeof mergeFp==='function'?mergeFp(typeof filterParams==='function'?filterParams():null,texParams(c)):(typeof filterParams==='function'?filterParams():null))}};
 function gradeActive(){const q=gradeParams();return Math.abs(q.amt)+Math.abs(q.tone)+Math.abs(q.sat)+Math.abs(q.con)+q.fade>.004||!!(typeof texParams==='function'&&texParams(ST.cur))}
 /* 视频暂未接入调色：录制期间预览回到未调色画面，保证「所见即所录」 */
 function gradeOn(){return !!(Grade.pv&&!Grade.dead&&!S.rec&&(gradeActive()||(typeof filterOn==='function'&&filterOn())))}
@@ -3475,10 +3476,24 @@ function loop(t){
 }
 
 /* ===== v3.3.4：镜头检测 / 长焦切换 / 变焦放大取景框 / 版本更新 ===== */
-const APP_VER='11.2.0';
+const APP_VER='11.3.0';
 try{const av=$('#aboutVer');if(av)av.textContent='LUCIDA · 版本 '+APP_VER+(window.LUCIDA_WATCH?' · 手表版':'')}catch(e){}
 const UPDATES=[
- {v:'11.2.0',d:'2026年11月16日',items:[
+ {v:'11.3.0',d:'2026年11月16日',items:[
+   '<b>HTML 转原生长期计划 · A1「共享数据」：</b>调色预设（13 个）、质感（标准 / 柔肤 / 光晕 / 胶片）系数、颗粒系数、调色强度系数、版本号和更新记录合并成一份数据文件，网页、iOS、安卓三端都从它生成，以后改一处三端一起变（版本号再也不会一边新一边旧）。',
+   '用户可见的功能没有任何变化；已对拍：网页新旧 28080 组参数完全一致，安卓与网页 22464 组最大误差 4e-8。',
+ ]},
+ {v:'11.2.1',d:'2026年11月16日',items:[
+   '<b>开关改成紧凑尺寸：</b>比之前窄了一圈；按住、点击或左右拖动时旋钮会变成液态玻璃水滴，拖到哪一边松手就开 / 关，松手后水滴落回纯白色旋钮（未开液态玻璃时只是白色旋钮）。',
+   '<b>调色盘算法对齐主页面：</b>色偏、色调、对比、褪色、带肤色保护的自然饱和度全部按主页面的着色器逐像素照抄（做成 3D 色彩查找表）；横轴 = 颜色浓淡（右：智能饱和度，左：变灰），纵轴 = 影调（上：提亮压阴影、反差变柔和；下：压暗、加深阴影、反差更强）；底部滑条 = 强度。',
+   '<b>质感 / 颗粒对齐主页面：</b>质感改成「标准 / 柔肤 / 光晕 / 胶片」四种风格 + 强度（各风格各记各的强度），颗粒一条强度；前置、后置各一套。',
+   '<b>更多设置 → 调色盘预设顺序：</b>拖动调整 13 个预设的顺序（「标准」固定第一位），调色盘里左右滑动按这个顺序切换，可一键恢复默认。',
+   '<b>更多设置 → 满帧画面运行录制：</b>开 = 手机发烫也不降帧，取景和录制都按所选帧率；关 = 发烫时自动降到 30 帧、60 帧取景隔帧刷新，保证录完的视频流畅。',
+   '<b>提示统一放在取景框左上角：</b>开液态玻璃时是玻璃面板，关闭时是普通深色面板；实况计时在它上面。',
+   '<b>液态玻璃补全：</b>顶部「4K · 60 · JPEG · 片门」胶囊换成液态玻璃长条水滴（文字保持清晰）；规格面板展开 / 收回像史莱姆一样 Q 弹（仅开启液态玻璃时）。',
+   '<b>修复：</b>分段选择器属性名与系统控件冲突导致的编译错误；版本号在各处同步。',
+ ]},
+ {v:'11.2.0',d:'2026年11月15日',items:[
    '<b>调色板全新改版（原生双摄）：</b>像苹果系统一样的悬浮深色圆角面板——左上返回、中间小二维色盘（拖圆点调色调 / 颜色，下面的滑条调强度）、右侧复位、快门，底部「调色板 / 质感 / 颗粒」三个页签；页签上方新增「后置 / 前置 / 同时」选择，前后摄像头的调色、质感、颗粒可以分开调，也可以一起调；左右滑动切换预设，上方显示预设名称和页码圆点；每一条滑条后面都有一个复位按钮。',
    '<b>调色板图标：</b>和主界面一样的圆角方块点阵，开启时黄色、关闭时白色，中间那个点会跟着色盘上的位置一起移动。',
    '<b>取景框左上角实况计时：</b>拍实况时显示已经拍到第几秒、是否合成完成（设置里可开关）。',
@@ -8434,22 +8449,20 @@ const LOG=window.LOG=(()=>{
 })();
 
 LOG.init();/* ===== 调色盘 2.0：质感（标准/柔肤/光晕/胶片）+ 颗粒 ；相机和相册共用同一套参数、同一套控件 ===== */
-const TEXS=[{id:'std',name:'标准'},{id:'soft',name:'柔肤'},{id:'halo',name:'光晕'},{id:'film',name:'胶片'}];
+const TEXS=[{"id":"std","name":"标准"},{"id":"soft","name":"柔肤"},{"id":"halo","name":"光晕"},{"id":"film","name":"胶片"}];
 const texName=id=>(TEXS.find(t=>t.id===id)||TEXS[0]).name;
 const p2=n=>String(Math.round(n)).padStart(2,'0');
 /* 质感/颗粒 → 滤镜着色器参数（和「滤镜影调」同一级，二者可叠加） */
+/* 以下三段由 shared/lucida-shared.json 生成（tools/gen_shared.py），不要手改 */
+const TEXC=[{"id":"std","name":"标准","coef":{"sp":0.9,"cl":0.55,"con":0.06,"sat":0.05},"shd":[0,0,0],"spatial":true},{"id":"soft","name":"柔肤","coef":{"sp":-1,"cl":-0.9,"con":-0.06,"sh":0.1,"sat":-0.03},"shd":[0,0,0],"spatial":true},{"id":"halo","name":"光晕","coef":{"hal":1.25,"cl":-0.5,"hi":-0.08,"sat":0.05},"shd":[0,0,0],"spatial":true},{"id":"film","name":"胶片","coef":{"gr":0.2,"con":0.14,"sat":-0.14,"hi":-0.12,"tmp":0.05},"shd":[-0.02,0.014,0.03],"spatial":false}];
+const TEXK={on:0.004,grain:0.004,grainK:0.3};
 function texParams(c){
   if(!c)return null;
-  const tv=Math.max(0,Math.min(1,+c.tv||0)),gr=Math.max(0,Math.min(1,+c.gr||0)),on=!!c.tex&&tv>.004;
-  if(!on&&gr<.004)return null;
+  const tv=Math.max(0,Math.min(1,+c.tv||0)),gr=Math.max(0,Math.min(1,+c.gr||0)),on=!!c.tex&&tv>TEXK.on;
+  if(!on&&gr<TEXK.grain)return null;
   const o={con:0,sat:0,hi:0,sh:0,tmp:0,cl:0,sp:0,gr:0,hal:0,tint:[0,0,0],shd:[0,0,0],rs:0};
-  if(on){
-    if(c.tex==='std'){o.sp=.9*tv;o.cl=.55*tv;o.con=.06*tv;o.sat=.05*tv;o.rs=1}             /* 标准：通透——锐化 + 局部对比 */
-    else if(c.tex==='soft'){o.sp=-1.0*tv;o.cl=-.9*tv;o.con=-.06*tv;o.sh=.1*tv;o.sat=-.03*tv;o.rs=1}  /* 柔肤：磨平细节、提亮暗部 */
-    else if(c.tex==='halo'){o.hal=1.25*tv;o.cl=-.5*tv;o.hi=-.08*tv;o.sat=.05*tv;o.rs=1}
-    else if(c.tex==='film'){o.gr=.2*tv;o.con=.14*tv;o.sat=-.14*tv;o.hi=-.12*tv;o.tmp=.05*tv;o.shd=[-.02*tv,.014*tv,.03*tv]}
-  }
-  o.gr+=gr*.3;
+  if(on){const s=TEXC.find(x=>x.id===c.tex);if(s){for(const k in s.coef)o[k]=s.coef[k]*tv;o.shd=s.shd.map(v=>v*tv);if(s.spatial)o.rs=1}}
+  o.gr+=gr*TEXK.grainK;
   return o;
 }
 function mergeFp(a,b){
@@ -8463,7 +8476,7 @@ function gradeParamsFor(cur,ft){
   const fp0=window.CINE?CINE.fpFor(ft):((ft&&ft!=='none')?filterParamsFor(filterBy(ft)):null);
   if(!cur)return{tint:[1,1,1],amt:0,tone:0,sat:0,con:0,mono:0,fade:0,fp:fp0};
   const p=styleBase(cur.sid),s=cur.str;
-  return{tint:p.cast,amt:p.ca*s,tone:cur.y*s*.6,sat:cur.x*s*.8,con:(p.con||0)*s,mono:0,fade:(p.fade||0)*s,fp:mergeFp(fp0,texParams(cur))};
+  return{tint:p.cast,amt:p.ca*s,tone:cur.y*s*GRADE_K.tone,sat:cur.x*s*GRADE_K.sat,con:(p.con||0)*s,mono:0,fade:(p.fade||0)*s*GRADE_K.fade,fp:mergeFp(fp0,texParams(cur))};
 }
 /* 恢复上次保存的质感 / 颗粒（原代码只恢复 sid/x/y/str） */
 try{const j=JSON.parse(localStorage.getItem('lucida.tint2')||'null');if(j){if(TEXS.some(t=>t.id===j.tex))ST.cur.tex=j.tex;if(isFinite(j.tv))ST.cur.tv=Math.max(0,Math.min(1,+j.tv));if(isFinite(j.gr))ST.cur.gr=Math.max(0,Math.min(1,+j.gr));if(j.tvm&&typeof j.tvm==='object')ST.cur.tvm=j.tvm}}catch(_){}

@@ -47,12 +47,18 @@ final class DualSettingsViewController: UIViewController {
         addSwitch("实况计时显示", "拍实况时在取景框左上角显示已经拍到第几秒、有没有拍完", st.liveTimer) { [st] v in st.liveTimer = v }
         addSwitch("片门全开", "前后摄像头都用 4:3 整块传感器规格，成品 3:4；帧率尽量保持所选值", st.fullSensor) { [weak self] v in
             self?.st.fullSensor = v; self?.onChange?(true) }
+        addSwitch("满帧画面运行录制", "开：不因手机发烫自动降帧，取景和录制都按所选帧率；关：发烫时自动降到 30 帧、60 帧取景隔帧刷新，降低功耗，保证录完的视频流畅", st.fullRate) { [weak self] v in
+            self?.st.fullRate = v; self?.onChange?(false) }
         let bs: [PipBorder] = [.none, .white, .black]
         addSeg("小窗边框", ["无", "白色", "黑色"], bs.firstIndex(of: st.border) ?? 0) { [st] i in st.border = bs[i] }
         addSwitch("前置画面镜像", nil, st.mirror) { [st] v in st.mirror = v }
         addSwitch("录像时录制声音", nil, st.audio) { [st] v in st.audio = v }
         addSwitch("液态玻璃界面", "iOS 26 及以上使用系统原生液态玻璃；低版本自动用普通毛玻璃", g) { [weak self] v in
             self?.st.glass = v; self?.build() }
+        addLink("调色盘预设顺序", "拖动调整 13 个预设的顺序，调色盘里左右滑动就按这个顺序切换；「标准」固定在第一位") { [weak self] in
+            let v = DualPresetOrderViewController(); v.modalPresentationStyle = .pageSheet
+            self?.present(v, animated: true)
+        }
         let note = UILabel(); note.numberOfLines = 0; note.textColor = UIColor(white: 1, alpha: 0.45); note.font = .systemFont(ofSize: 12)
         note.text = "说明：同时开前后摄像头时，系统不提供 ProRAW；实况照片没有声音。"
         stack.addArrangedSubview(note)
@@ -88,8 +94,88 @@ final class DualSettingsViewController: UIViewController {
         let s = GlassSwitch(on: on); s.glass = st.glass
         s.onChange = { [weak self] v in f(v); if title.hasPrefix("液态") { self?.onChange?(false) } }
         s.setContentHuggingPriority(.required, for: .horizontal)
-        s.widthAnchor.constraint(equalToConstant: 58).isActive = true; s.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        s.widthAnchor.constraint(equalToConstant: 50).isActive = true; s.heightAnchor.constraint(equalToConstant: 28).isActive = true
         card(title, sub, s, inline: true)
     }
+    private var linkActions: [ObjectIdentifier: () -> Void] = [:]
+    private func addLink(_ title: String, _ sub: String?, _ f: @escaping () -> Void) {
+        let chev = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chev.tintColor = UIColor(white: 1, alpha: 0.5); chev.contentMode = .scaleAspectFit
+        chev.setContentHuggingPriority(.required, for: .horizontal)
+        card(title, sub, chev, inline: true)
+        guard let c = stack.arrangedSubviews.last else { return }
+        linkActions[ObjectIdentifier(c)] = f
+        c.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(linkTapped(_:))))
+    }
+    @objc private func linkTapped(_ g: UITapGestureRecognizer) {
+        if let v = g.view, let f = linkActions[ObjectIdentifier(v)] { f() }
+    }
     @objc private func close() { dismiss(animated: true) }
+}
+
+
+// MARK: - 调色盘预设顺序（拖动排序；「标准」固定第一位）
+
+final class DualPresetOrderViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+    private var sids = PresetOrder.sids
+    private let table = UITableView(frame: .zero, style: .plain)
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor(white: 0.07, alpha: 1); overrideUserInterfaceStyle = .dark
+        let title = UILabel(); title.text = "调色盘预设顺序"; title.textColor = .white; title.font = .systemFont(ofSize: 17, weight: .semibold)
+        let done = UIButton(type: .system); done.setTitle("完成", for: .normal); done.tintColor = dualYellow
+        done.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        done.addTarget(self, action: #selector(close), for: .touchUpInside)
+        let reset = UIButton(type: .system); reset.setTitle("恢复默认", for: .normal); reset.tintColor = dualYellow
+        reset.titleLabel?.font = .systemFont(ofSize: 15)
+        reset.addTarget(self, action: #selector(resetOrder), for: .touchUpInside)
+        let bar = UIView(); bar.translatesAutoresizingMaskIntoConstraints = false
+        [title, done, reset].forEach { $0.translatesAutoresizingMaskIntoConstraints = false; bar.addSubview($0) }
+        table.translatesAutoresizingMaskIntoConstraints = false
+        table.backgroundColor = .clear; table.dataSource = self; table.delegate = self
+        table.isEditing = true; table.separatorColor = UIColor(white: 1, alpha: 0.1)
+        table.register(UITableViewCell.self, forCellReuseIdentifier: "c")
+        view.addSubview(bar); view.addSubview(table)
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: view.topAnchor), bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor), bar.heightAnchor.constraint(equalToConstant: 56),
+            title.centerXAnchor.constraint(equalTo: bar.centerXAnchor), title.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            done.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -18), done.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            reset.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 18), reset.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            table.topAnchor.constraint(equalTo: bar.bottomAnchor), table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            table.trailingAnchor.constraint(equalTo: view.trailingAnchor), table.bottomAnchor.constraint(equalTo: view.bottomAnchor)])
+    }
+    @objc private func close() { dismiss(animated: true) }
+    @objc private func resetOrder() { PresetOrder.reset(); sids = PresetOrder.sids; table.reloadData() }
+
+    private func dot(_ c: [Double]) -> UIImage {
+        let r = UIGraphicsImageRenderer(size: CGSize(width: 22, height: 22))
+        return r.image { _ in
+            UIColor(red: CGFloat(min(1, c[0] * 1.1)), green: CGFloat(min(1, c[1] * 1.1)), blue: CGFloat(min(1, c[2] * 1.1)), alpha: 1).setFill()
+            UIBezierPath(ovalIn: CGRect(x: 1, y: 1, width: 20, height: 20)).fill()
+        }
+    }
+
+    func tableView(_ t: UITableView, numberOfRowsInSection s: Int) -> Int { sids.count }
+    func tableView(_ t: UITableView, cellForRowAt ip: IndexPath) -> UITableViewCell {
+        let cell = t.dequeueReusableCell(withIdentifier: "c", for: ip)
+        let p = stylePresets.first { $0.sid == sids[ip.row] } ?? stylePresets[0]
+        cell.textLabel?.text = "\(ip.row + 1)  \(p.name)" + (ip.row == 0 ? "（固定第一位）" : "")
+        cell.textLabel?.textColor = .white
+        cell.imageView?.image = dot(p.tint)
+        cell.backgroundColor = UIColor(white: 1, alpha: 0.06)
+        return cell
+    }
+    func tableView(_ t: UITableView, canMoveRowAt ip: IndexPath) -> Bool { ip.row != 0 }
+    func tableView(_ t: UITableView, editingStyleForRowAt ip: IndexPath) -> UITableViewCell.EditingStyle { .none }
+    func tableView(_ t: UITableView, shouldIndentWhileEditingRowAt ip: IndexPath) -> Bool { false }
+    func tableView(_ t: UITableView, targetIndexPathForMoveFromRowAt src: IndexPath, toProposedIndexPath dst: IndexPath) -> IndexPath {
+        dst.row == 0 ? IndexPath(row: 1, section: 0) : dst
+    }
+    func tableView(_ t: UITableView, moveRowAt src: IndexPath, to dst: IndexPath) {
+        let x = sids.remove(at: src.row); sids.insert(x, at: dst.row)
+        PresetOrder.sids = sids
+        t.reloadData()
+    }
 }
