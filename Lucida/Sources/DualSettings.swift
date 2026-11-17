@@ -190,6 +190,8 @@ final class GradeState {
     private var _gr = 0.0                                              // 颗粒
     private var version = 0
     private var cubeKey = -1, cube: Data?
+    private var cubeBusy = false
+    private let cubeQueue = DispatchQueue(label: "lucida.grade.cube", qos: .userInitiated)
     private let storeKey: String?
     private var saveWork: DispatchWorkItem?
 
@@ -279,12 +281,27 @@ final class GradeState {
         let s = Snapshot(preset: stylePresets[_preset], presetIndex: _preset, x: _x, y: _y, str: _str, tex: _tex, tv: _tv, tvm: _tvm, gr: _gr)
         let ver = version
         var data = cube
-        let have = cubeKey == ver
+        let fresh = cubeKey == ver
+        let busy = cubeBusy
         lock.unlock()
         let m = math(s)
-        if !have || data == nil {
-            data = m.makeCube()
-            lock.lock(); cube = data; cubeKey = ver; lock.unlock()
+        if !fresh {
+            if data == nil {
+                // 第一次：还没有旧表，只能当场算
+                data = m.makeCube()
+                lock.lock(); if cubeKey < ver { cube = data; cubeKey = ver }; lock.unlock()
+            } else if !busy {
+                // 拖动调色盘 / 滑块时：这一帧先沿用旧表，新表放到后台算（算一张 33³ 的表要十几毫秒，放在取景线程上会掉帧）
+                lock.lock(); cubeBusy = true; lock.unlock()
+                cubeQueue.async { [weak self] in
+                    let d = m.makeCube()
+                    guard let self = self else { return }
+                    self.lock.lock()
+                    if self.cubeKey < ver { self.cube = d; self.cubeKey = ver }
+                    self.cubeBusy = false
+                    self.lock.unlock()
+                }
+            }
         }
         let ext = input.extent
         var img = input

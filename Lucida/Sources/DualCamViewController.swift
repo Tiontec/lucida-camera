@@ -1,4 +1,5 @@
 import UIKit
+import Photos
 import AVFoundation
 
 /// 原生双摄相机界面：取景（引擎合成的画面）+ 顶部 / 底部控件 + 变焦转盘 + 调色面板 + 设置 + 相册。
@@ -42,9 +43,22 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private let palette = DualPalettePanel()
     private let readout = UILabel(), presetLabel = UILabel()
     private var paletteOpen = false
-    private let pageDots = UIPageControl()
-    private let liveTimerLabel = UILabel()
+    private let pageDots = PresetDots()
+    // 实况连拍：每张各自一行进度（取景框左上角），全部拍完 / 存完后一起消失
+    private final class LiveTask {
+        let n: Int, t0 = Date(), total: Double, photo: URL
+        var stillDone = false, stillOK = false
+        var liveDone = false, mov: URL?, stillAt = 0.0, err: String?
+        var phase = 0                      // 0 录制中 · 1 合成保存中 · 2 完成 · 3 失败
+        var note = ""
+        let row = PaddedLabel()
+        init(n: Int, total: Double, photo: URL) { self.n = n; self.total = total; self.photo = photo }
+    }
+    private var liveTasks: [LiveTask] = []
+    private var liveSeq = 0
+    private let liveStack = UIStackView()
     private var liveTick: Timer?
+    private var liveHideToken = 0
     private let focusBox = FocusIndicator()
     private var focusBack = true, biasBase: Float = 0, exposureDragging = false, pipDragging = false
     private var stageFrame = CGRect.zero
@@ -68,6 +82,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         buildUI()
         engine.onPressure = { [weak self] m in self?.say(m, 3.5) }
         applyGlass()
+        refreshThumb()
         spinner.startAnimating()
         requestPermissions { [weak self] videoOK, audioOK in
             guard let self = self else { return }
@@ -204,20 +219,16 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         presetLabel.textColor = .white; presetLabel.font = .systemFont(ofSize: 13, weight: .semibold); presetLabel.textAlignment = .center
         presetLabel.backgroundColor = UIColor(white: 0, alpha: 0.45); presetLabel.layer.cornerRadius = 13; presetLabel.clipsToBounds = true; presetLabel.isHidden = true
         view.addSubview(presetLabel)
-        pageDots.numberOfPages = stylePresets.count; pageDots.isUserInteractionEnabled = false
-        pageDots.pageIndicatorTintColor = UIColor(white: 1, alpha: 0.35); pageDots.currentPageIndicatorTintColor = .white; pageDots.isHidden = true
+        pageDots.isUserInteractionEnabled = false; pageDots.isHidden = true
         view.addSubview(pageDots)
-        // 实况计时（取景框左上角）
-        liveTimerLabel.textColor = .white; liveTimerLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
-        liveTimerLabel.backgroundColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 0.9); liveTimerLabel.layer.cornerRadius = 12
-        liveTimerLabel.clipsToBounds = true; liveTimerLabel.textAlignment = .center; liveTimerLabel.isHidden = true
-        liveTimerLabel.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([liveTimerLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 120), liveTimerLabel.heightAnchor.constraint(equalToConstant: 24)])
+        // 实况进度（取景框左上角，一张一行）
+        liveStack.axis = .vertical; liveStack.spacing = 4; liveStack.alignment = .leading
+        liveStack.translatesAutoresizingMaskIntoConstraints = false
         // 左上角提示区：以后所有提示都出现在这里（实况计时在上，提示条在下）
         toastBox.translatesAutoresizingMaskIntoConstraints = false
         hintStack.axis = .vertical; hintStack.spacing = 6; hintStack.alignment = .leading
         hintStack.translatesAutoresizingMaskIntoConstraints = false
-        hintStack.addArrangedSubview(liveTimerLabel); hintStack.addArrangedSubview(toastBox)
+        hintStack.addArrangedSubview(liveStack); hintStack.addArrangedSubview(toastBox)
         stage.addSubview(hintStack)
         NSLayoutConstraint.activate([hintStack.topAnchor.constraint(equalTo: stage.topAnchor, constant: 10),
             hintStack.leadingAnchor.constraint(equalTo: stage.leadingAnchor, constant: 12),
@@ -387,36 +398,48 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
     @objc private func toggleSpecPanel() { setSpecPanel(specPanel.isHidden) }
 
-    /// 规格面板展开 / 收起：开了液态玻璃就像史莱姆一样 Q 弹地弹出、弹回去；没开就直接显示 / 隐藏
+    /// 规格面板展开 / 收起：开了液态玻璃就像史莱姆一样 Q 弹地从「帧率画质」那颗胶囊下面弹出、再缩回到那里；没开就直接显示 / 隐藏。
+    /// 玻璃本身用「在动画里把 effect 设成 / 取消」来出现和消失（只改透明度的话，玻璃会在原地留几帧残影）。
     private var specAnimating = false
-    private func specSquash(_ sx: CGFloat, _ sy: CGFloat) -> CGAffineTransform {
-        CGAffineTransform(a: sx, b: 0, c: 0, d: sy, tx: 0, ty: -specPanel.bounds.height / 2 * (1 - sy))      // 以顶部中点为支点缩放
+    private var specGen = 0
+    /// 收起状态：整块缩成一小点，落在胶囊下沿的中点（不盖住胶囊）
+    private func specCollapsed() -> CGAffineTransform {
+        let pill = specPill.convert(specPill.bounds, to: view)
+        let px = pill.midX, py = pill.maxY - 2, c = specPanel.center, s: CGFloat = 0.1
+        return CGAffineTransform(a: s, b: 0, c: 0, d: s, tx: (1 - s) * (px - c.x), ty: (1 - s) * (py - c.y))
     }
     private func setSpecPanel(_ open: Bool) {
         if open == !specPanel.isHidden && !specAnimating { return }
-        specPanel.layer.removeAllAnimations()
+        specPanel.layer.removeAllAnimations(); specBack.layer.removeAllAnimations()
+        specGen += 1; let gen = specGen
         guard st.glass else { specPanel.transform = .identity; specPanel.alpha = 1; specPanel.isHidden = !open; return }
         view.layoutIfNeeded()
+        specAnimating = true
         if open {
-            specPanel.isHidden = false; specPanel.alpha = 0
-            specPanel.transform = specSquash(0.25, 0.08)
-            specAnimating = true
-            UIView.animate(withDuration: 0.75, delay: 0, usingSpringWithDamping: 0.46, initialSpringVelocity: 1.1, options: [.allowUserInteraction]) {
+            specBack.effect = nil; specBack.backgroundColor = nil
+            specPanel.isHidden = false; specPanel.alpha = 1
+            specPanel.transform = specCollapsed()
+            UIView.animate(withDuration: 0.75, delay: 0, usingSpringWithDamping: 0.5, initialSpringVelocity: 1.0, options: [.allowUserInteraction]) {
                 self.specPanel.transform = .identity
-            } completion: { _ in self.specAnimating = false }
-            UIView.animate(withDuration: 0.18) { self.specPanel.alpha = 1 }
+            } completion: { _ in if gen == self.specGen { self.specAnimating = false } }
+            UIView.animate(withDuration: 0.3, delay: 0, options: [.allowUserInteraction]) {
+                self.specBack.effect = dualGlassEffect()
+            }
         } else {
-            specAnimating = true
             UIView.animate(withDuration: 0.12, delay: 0, options: [.curveEaseOut]) {
-                self.specPanel.transform = self.specSquash(1.05, 0.95)
+                self.specPanel.transform = CGAffineTransform(scaleX: 1.04, y: 0.96)
             } completion: { _ in
-                UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.55, initialSpringVelocity: 0.9, options: []) {
-                    self.specPanel.transform = self.specSquash(0.25, 0.08)
+                guard gen == self.specGen else { return }
+                UIView.animate(withDuration: 0.42, delay: 0, usingSpringWithDamping: 0.62, initialSpringVelocity: 0.8, options: []) {
+                    self.specPanel.transform = self.specCollapsed()
+                    self.specBack.effect = nil          // 玻璃一起「化掉」
+                    self.specPanel.alpha = 0
                 } completion: { _ in
+                    guard gen == self.specGen else { return }
                     self.specAnimating = false
                     self.specPanel.isHidden = true; self.specPanel.transform = .identity; self.specPanel.alpha = 1
+                    self.specBack.apply(glass: true, flat: UIColor(white: 0.1, alpha: 0.94))
                 }
-                UIView.animate(withDuration: 0.3, delay: 0.08, options: [.curveEaseIn]) { self.specPanel.alpha = 0 }
             }
         }
     }
@@ -474,6 +497,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     @objc private func openAlbum() {
         let a = DualAlbumViewController(); a.items = items
         a.onImport = { [weak self] in self?.closeTapped() }
+        a.onClose = { [weak self] in self?.refreshThumb() }
         a.modalPresentationStyle = .fullScreen
         present(a, animated: true)
     }
@@ -493,16 +517,20 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private var gradeTargets: [GradeState] {
         switch st.gradeTarget { case 0: return [st.gradeBack]; case 1: return [st.gradeFront]; default: return [st.gradeBack, st.gradeFront] }
     }
+    /// 数值显示（和主页面一样：0 显示成「00」，负数带负号）
+    private static func sgn(_ v: Double) -> String {
+        let n = Int((v * 100).rounded()); return n == 0 ? "00" : "\(n)"
+    }
     private func updatePaletteGlyph() {
         let s = shownGrade.snapshot()
         btnPalette.setImage(PaletteGlyph.image(size: 26, x: s.x, y: s.y), for: .normal)
     }
     private func paletteChanged() {
         let s = shownGrade.snapshot()
-        readout.text = "色调 \(Int((s.y * 100).rounded()))   颜色 \(Int((s.x * 100).rounded()))   调色盘 \(Int((s.str * 100).rounded()))"
+        readout.text = "色调 \(Self.sgn(s.y))   颜色 \(Self.sgn(s.x))   调色盘 \(Int((s.str * 100).rounded()))"
         let i = shownGrade.presetIndex
         presetLabel.text = "  \(s.preset.name)  "
-        pageDots.currentPage = PresetOrder.indices.firstIndex(of: i) ?? 0
+        pageDots.set(index: PresetOrder.indices.firstIndex(of: i) ?? 0, count: PresetOrder.indices.count)
         updatePaletteGlyph()
     }
     @objc private func swipePreset(_ g: UISwipeGestureRecognizer) {
@@ -603,7 +631,10 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     @objc private func shutterTapped() {
         guard ready, !reconfiguring else { return }
-        if mode == .photo { takePhoto() } else { engine.isRecording ? stopRecording() : startRecording() }
+        if mode == .photo { takePhoto() }
+        else if engine.isRecording { stopRecording() }
+        else if liveTasks.contains(where: { $0.phase < 2 }) { say("还有实况在拍 / 合成，等它们完成再录像") }
+        else { startRecording() }
     }
 
     private func newFile(_ ext: String) -> URL {
@@ -618,57 +649,111 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let flash = UIView(frame: stage.bounds); flash.backgroundColor = .white; stage.addSubview(flash)
         UIView.animate(withDuration: 0.25, animations: { flash.alpha = 0 }) { _ in flash.removeFromSuperview() }
-        if live { engine.captureLive(totalSeconds: st.liveDur) { [weak self] mov, still, err in self?.liveDone(url, mov, still, err) }; startLiveTimer(); say("实况录制中…") }
+        var task: LiveTask?
+        if live {
+            // 实况可以连拍：上一张还没拍完 / 合成完，也可以继续按快门，每张各自排队，左上角各有一行进度
+            liveSeq += 1
+            let t = LiveTask(n: liveSeq, total: max(1.0, st.liveDur), photo: url)
+            task = t; liveTasks.append(t); saving += 1
+            addLiveRow(t)
+            engine.captureLive(totalSeconds: st.liveDur) { [weak self] mov, still, err in
+                DispatchQueue.main.async { self?.liveCaptured(t, mov, still, err) }
+            }
+        }
         engine.takePhoto(to: url, heif: heif) { [weak self] ok, err in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                if !ok { self.say("拍照失败：\(err ?? "未知错误")"); return }
-                if !live { self.store(url, isVideo: false) }
+                if !ok { self.say("拍照失败：\(err ?? "未知错误")") }
+                if let t = task { t.stillDone = true; t.stillOK = ok; self.liveTryFinish(t) }
+                else if ok { self.store(url, isVideo: false) }
             }
         }
     }
 
-    private func liveDone(_ photo: URL, _ mov: URL?, _ still: Double, _ err: String?) {
-        DispatchQueue.main.async {
-            self.finishLiveTimer(ok: mov != nil)
-            guard let mov = mov else { self.say("实况失败：\(err ?? "")，已保存静态照片"); self.store(photo, isVideo: false); return }
-            self.saving += 1
-            LivePhotoSaver.save(photo: photo, video: mov, duration: self.st.liveDur, still: still) { ok, msg in
-                self.saving -= 1
-                self.items.append(Item(kind: "photo", url: photo, saved: ok))
-                self.updateThumb(photo)
-                self.say(ok ? "实况照片已存入系统相册" : "实况没存进系统相册：\(msg ?? "")")
-                if self.st.liveAlsoStill { PhotoSaver.save(file: photo, isVideo: false) { _, _ in } }
-            }
-        }
+    /// 实况视频收完（或失败）
+    private func liveCaptured(_ t: LiveTask, _ mov: URL?, _ still: Double, _ err: String?) {
+        t.liveDone = true; t.mov = mov; t.stillAt = still; t.err = err
+        if mov != nil { t.phase = 1 } else { t.note = err ?? "" }
+        refreshLiveRows()
+        liveTryFinish(t)
     }
 
-    // MARK: - 实况计时（取景框左上角）
-
-    private func startLiveTimer() {
-        guard st.liveTimer else { return }
-        liveTick?.invalidate()
-        let total = max(1.0, st.liveDur), pre = min(1.5, total / 2)
-        let t0 = Date()
-        liveTimerLabel.isHidden = false
-        liveTimerLabel.backgroundColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 0.9)
-        liveTimerLabel.text = String(format: "● 实况  %.1f / %.1f 秒", pre, total)
-        liveTick = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+    /// 静态照片和实况视频都有结果之后，才一起存进系统相册
+    private func liveTryFinish(_ t: LiveTask) {
+        guard t.liveDone, t.stillDone else { return }
+        guard t.stillOK else {
+            t.phase = 3; t.note = "照片没拍成"; saving -= 1
+            liveTaskEnded(t, msg: "实况失败：照片没拍成"); return
+        }
+        guard let mov = t.mov else {
+            // 实况没录成：退回存一张静态照片
+            t.phase = 3; t.note = "\(t.err ?? "")，已存静态照片"
+            store(t.photo, isVideo: false)
+            saving -= 1
+            liveTaskEnded(t, msg: "实况失败：\(t.err ?? "")，已保存静态照片"); return
+        }
+        t.phase = 1; refreshLiveRows()
+        LivePhotoSaver.saveWithID(photo: t.photo, video: mov, duration: t.total, still: t.stillAt) { [weak self] ok, msg, id in
             guard let self = self else { return }
-            let e = min(total, pre + Date().timeIntervalSince(t0))
-            self.liveTimerLabel.text = e >= total ? "实况合成中…" : String(format: "● 实况  %.1f / %.1f 秒", e, total)
+            self.saving -= 1
+            self.items.append(Item(kind: "photo", url: t.photo, saved: ok))
+            DualLibrary.add(id)
+            self.updateThumb(t.photo)
+            t.phase = ok ? 2 : 3; if !ok { t.note = msg ?? "" }
+            if ok, self.st.liveAlsoStill { PhotoSaver.save(file: t.photo, isVideo: false) { _, _ in } }
+            self.liveTaskEnded(t, msg: ok ? "实况照片已存入系统相册" : "实况没存进系统相册：\(msg ?? "")")
         }
     }
 
-    private func finishLiveTimer(ok: Bool) {
-        liveTick?.invalidate(); liveTick = nil
-        guard st.liveTimer, !liveTimerLabel.isHidden else { return }
-        liveTimerLabel.backgroundColor = ok ? UIColor(red: 0.1, green: 0.6, blue: 0.3, alpha: 0.92) : UIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 0.92)
-        liveTimerLabel.text = ok ? "✓ 实况已拍完" : "实况失败"
-        let tag = Int(Date().timeIntervalSince1970 * 1000); liveTimerLabel.tag = tag
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
-            guard let self = self, self.liveTimerLabel.tag == tag, self.liveTick == nil else { return }
-            self.liveTimerLabel.isHidden = true
+    // MARK: - 实况进度（取景框左上角）
+
+    private func addLiveRow(_ t: LiveTask) {
+        t.row.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold); t.row.textColor = .white
+        t.row.layer.cornerRadius = 12; t.row.clipsToBounds = true
+        liveStack.addArrangedSubview(t.row)
+        liveHideToken += 1                                   // 又来了新的一张，先别收
+        refreshLiveRows()
+        if liveTick == nil {
+            liveTick = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshLiveRows() }
+        }
+    }
+
+    private func refreshLiveRows() {
+        let show = st.liveTimer
+        liveStack.isHidden = !show || liveTasks.isEmpty
+        let pre = 1.5
+        for t in liveTasks {
+            switch t.phase {
+            case 0:
+                let e = min(t.total, min(pre, t.total / 2) + Date().timeIntervalSince(t.t0))
+                t.row.text = String(format: "● 实况 #%d  录制 %.1f / %.1f 秒", t.n, e, t.total)
+                t.row.backgroundColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 0.9)
+            case 1:
+                t.row.text = "◐ 实况 #\(t.n)  合成保存中…"
+                t.row.backgroundColor = UIColor(red: 0.85, green: 0.5, blue: 0.1, alpha: 0.92)
+            case 2:
+                t.row.text = "✓ 实况 #\(t.n)  已存入"
+                t.row.backgroundColor = UIColor(red: 0.1, green: 0.6, blue: 0.3, alpha: 0.92)
+            default:
+                t.row.text = "✕ 实况 #\(t.n)  失败" + (t.note.isEmpty ? "" : "：\(t.note)")
+                t.row.backgroundColor = UIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 0.92)
+            }
+        }
+        if !liveTasks.contains(where: { $0.phase == 0 }) { liveTick?.invalidate(); liveTick = nil }
+    }
+
+    /// 一张实况收尾。所有实况都完成了，进度条才一起收起来
+    private func liveTaskEnded(_ t: LiveTask, msg: String) {
+        refreshLiveRows()
+        if !st.liveTimer || t.phase == 3 { say(msg, 2.6) }
+        guard !liveTasks.contains(where: { $0.phase < 2 }) else { return }
+        liveHideToken += 1
+        let tok = liveHideToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+            guard let self = self, self.liveHideToken == tok, !self.liveTasks.contains(where: { $0.phase < 2 }) else { return }
+            for x in self.liveTasks { self.liveStack.removeArrangedSubview(x.row); x.row.removeFromSuperview() }
+            self.liveTasks.removeAll()
+            self.liveStack.isHidden = true
         }
     }
 
@@ -707,12 +792,29 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     private func store(_ url: URL, isVideo: Bool) {
         saving += 1
-        PhotoSaver.save(file: url, isVideo: isVideo) { [weak self] ok, msg in
+        PhotoSaver.saveWithID(file: url, isVideo: isVideo) { [weak self] ok, msg, id in
             guard let self = self else { return }
             self.saving -= 1
             self.items.append(Item(kind: isVideo ? "video" : "photo", url: url, saved: ok))
+            DualLibrary.add(id)
             self.updateThumb(url)
             self.say(ok ? (isVideo ? "视频已存入系统相册" : "照片已存入系统相册") : "没存进系统相册：\(msg ?? "")（仍会导入澄影相册）")
+        }
+    }
+
+    /// 相册入口的缩略图 = 系统相册里最近一张双摄拍的（重开 App 也在；删掉后自动换成上一张）
+    private func refreshThumb() {
+        guard PhotoSaver.canRead else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let latest = DualLibrary.fetch().first
+            guard let a = latest else {
+                DispatchQueue.main.async { self?.thumb.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal) }
+                return
+            }
+            let o = PHImageRequestOptions(); o.isSynchronous = true; o.deliveryMode = .highQualityFormat; o.resizeMode = .fast
+            PHImageManager.default().requestImage(for: a, targetSize: CGSize(width: 180, height: 180), contentMode: .aspectFill, options: o) { im, _ in
+                DispatchQueue.main.async { if let im = im { self?.thumb.setImage(im, for: .normal) } }
+            }
         }
     }
 
@@ -744,14 +846,15 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
                     guard let self = self else { return }
                     if let u = url {
                         self.saving += 1
-                        PhotoSaver.save(file: u, isVideo: true) { ok, _ in
-                            self.saving -= 1; self.items.append(Item(kind: "video", url: u, saved: ok)); self.finish(code: nil, msg: nil)
+                        PhotoSaver.saveWithID(file: u, isVideo: true) { ok, _, id in
+                            self.saving -= 1; self.items.append(Item(kind: "video", url: u, saved: ok)); DualLibrary.add(id); self.finish(code: nil, msg: nil)
                         }
                     } else { self.finish(code: nil, msg: nil) }
                 }
             }
             return
         }
+        if saving > 0 { say("还有 \(saving) 项在合成保存，稍等一下再关闭…", 3) }
         finish(code: nil, msg: nil)
     }
 
@@ -780,4 +883,35 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
     @objc private func interrupted(_ n: Notification) { DispatchQueue.main.async { self.say("相机被系统暂时占用…") } }
     @objc private func interruptionEnded(_ n: Notification) { DispatchQueue.main.async { self.say("相机已恢复") } }
+}
+
+/// 预设页码圆点：最多显示 5 个，当前的白色放大；窗口没到头时，边上的点缩小，表示后面还有（和主页面同款）
+final class PresetDots: UIView {
+    private var index = 0, count = 1
+    func set(index: Int, count: Int) { self.index = index; self.count = max(1, count); setNeedsDisplay() }
+    override init(frame: CGRect) { super.init(frame: frame); backgroundColor = .clear; isOpaque = false }
+    required init?(coder: NSCoder) { fatalError() }
+    override func draw(_ rect: CGRect) {
+        guard let c = UIGraphicsGetCurrentContext() else { return }
+        let n = min(5, count), s0 = max(0, min(count - n, index - 2)), gap: CGFloat = 14
+        let x0 = (bounds.width - gap * CGFloat(n - 1)) / 2
+        for k in 0..<n {
+            let i = s0 + k, on = i == index
+            let edge = (k == 0 && s0 > 0) || (k == n - 1 && s0 + n < count)
+            let r: CGFloat = on ? 4 : (edge ? 2.2 : 3)
+            c.setFillColor(UIColor(white: 1, alpha: on ? 1 : 0.4).cgColor)
+            c.fillEllipse(in: CGRect(x: x0 + gap * CGFloat(k) - r, y: bounds.height / 2 - r, width: r * 2, height: r * 2))
+        }
+    }
+}
+
+
+/// 带内边距的标签（取景框左上角的实况进度条用）
+final class PaddedLabel: UILabel {
+    var inset = UIEdgeInsets(top: 4, left: 11, bottom: 4, right: 11)
+    override func drawText(in rect: CGRect) { super.drawText(in: rect.inset(by: inset)) }
+    override var intrinsicContentSize: CGSize {
+        let s = super.intrinsicContentSize
+        return CGSize(width: s.width + inset.left + inset.right, height: s.height + inset.top + inset.bottom)
+    }
 }

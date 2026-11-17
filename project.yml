@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "11.4.0"
-    CURRENT_PROJECT_VERSION: "32"
+    MARKETING_VERSION: "11.5.0"
+    CURRENT_PROJECT_VERSION: "33"
     DEVELOPMENT_TEAM: ""
     ENABLE_BITCODE: NO
 targets:
@@ -20,6 +20,9 @@ targets:
       - path: Lucida/Sources
       - path: Lucida/Resources/Assets.xcassets
       - path: Lucida/Resources/web
+        type: folder
+        buildPhase: resources
+      - path: Lucida/Resources/content
         type: folder
         buildPhase: resources
     settings:

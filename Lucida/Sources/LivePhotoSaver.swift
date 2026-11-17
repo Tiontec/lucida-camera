@@ -32,24 +32,31 @@ enum LivePhotoSaver {
     }
 
     static func save(photo: URL, video: URL, duration: Double, still stillSec: Double? = nil, completion: @escaping (Bool, String?) -> Void) {
+        saveWithID(photo: photo, video: video, duration: duration, still: stillSec) { ok, msg, _ in completion(ok, msg) }
+    }
+
+    /// 同上，并且把新资源在系统相册里的 localIdentifier 交回来
+    static func saveWithID(photo: URL, video: URL, duration: Double, still stillSec: Double? = nil, completion: @escaping (Bool, String?, String?) -> Void) {
         let id = UUID().uuidString
         let dir = SchemeHandler.outDir
-        guard let photoOut = tagPhoto(photo, identifier: id, into: dir) else { completion(false, "照片写入标识失败"); return }
+        guard let photoOut = tagPhoto(photo, identifier: id, into: dir) else { completion(false, "照片写入标识失败", nil); return }
         let movOut = dir.appendingPathComponent(UUID().uuidString + ".mov")
         // 静帧 = 按下快门的那一刻（网页算好的）；没有就取视频中间
         let stillAt = (stillSec != nil && stillSec! >= 0 && (duration <= 0 || stillSec! < duration)) ? stillSec! : max(0, duration / 2)
         let still = CMTime(seconds: stillAt, preferredTimescale: 600)
         tagVideo(input: video, output: movOut, identifier: id, still: still) { ok, msg in
-            guard ok else { completion(false, msg ?? "视频处理失败"); return }
+            guard ok else { completion(false, msg ?? "视频处理失败", nil); return }
             PhotoSaver.auth { granted in
-                guard granted else { completion(false, "没有系统相册权限"); return }
+                guard granted else { completion(false, "没有系统相册权限", nil); return }
+                var newID: String?
                 PHPhotoLibrary.shared().performChanges({
                     let req = PHAssetCreationRequest.forAsset()
                     req.addResource(with: .photo, fileURL: photoOut, options: nil)
                     let o = PHAssetResourceCreationOptions(); o.shouldMoveFile = false
                     req.addResource(with: .pairedVideo, fileURL: movOut, options: o)
+                    newID = req.placeholderForCreatedAsset?.localIdentifier
                 }, completionHandler: { success, err in
-                    DispatchQueue.main.async { completion(success, err?.localizedDescription) }
+                    DispatchQueue.main.async { completion(success, err?.localizedDescription, success ? newID : nil) }
                 })
             }
         }

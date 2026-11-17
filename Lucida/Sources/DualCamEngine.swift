@@ -528,19 +528,34 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         lock.lock(); lastBack = pb; let f = lastFront; lock.unlock()
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         previewN += 1
-        if fullRate || actualBackFps <= 35 || previewN % 2 == 0 { renderPreview(back: pb, front: f, pts: pts) }     // 60 帧时预览隔帧刷新，把算力留给录像
-        if wantRecord || isRecording { recordFrame(pts) }
-        collectLive(back: pb, front: f, pts: pts)
+        let wantPv = fullRate || actualBackFps <= 35 || previewN % 2 == 0     // 60 帧时预览隔帧刷新，把算力留给录像
+        // 每一帧「合成 + 调色」只做一次，成品同时给 录像 / 取景 / 实况 用（以前三处各算一遍，调色一开就卡）
+        var shown: CVPixelBuffer?
+        var shownIsPreview = false
+        if wantRecord || isRecording { shown = recordFrame(pts) }
+        if wantPv {
+            if let s = shown { display(s, pts: pts) }
+            else { shown = renderPreview(back: pb, front: f, pts: pts); shownIsPreview = shown != nil }
+        }
+        if shownIsPreview, let s = shown { collectLive(from: s, pts: pts) }
     }
 
     // MARK: - 预览
 
-    private func renderPreview(back: CVPixelBuffer, front: CVPixelBuffer?, pts: CMTime) {
-        guard let pool = pvPool else { return }
+    /// 合成一帧取景画面（pvSize），送去显示，并把这张缓冲返回（实况从它缩小得到）
+    @discardableResult
+    private func renderPreview(back: CVPixelBuffer, front: CVPixelBuffer?, pts: CMTime) -> CVPixelBuffer? {
+        guard let pool = pvPool else { return nil }
         var out: CVPixelBuffer?
-        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let dst = out else { return }
+        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let dst = out else { return nil }
         let img = compose(back: back, front: front, size: pvSize)
         ci.render(img, to: dst, bounds: CGRect(origin: .zero, size: pvSize), colorSpace: rgb)
+        display(dst, pts: pts)
+        return dst
+    }
+
+    /// 把一张已经画好的缓冲送进取景层（录像时直接用录像那一帧，不再另外合成一遍）
+    private func display(_ dst: CVPixelBuffer, pts: CMTime) {
         var fd: CMVideoFormatDescription?
         CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: dst, formatDescriptionOut: &fd)
         guard let fmt = fd else { return }
@@ -707,20 +722,23 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         } catch { failMsg = error.localizedDescription; return false }
     }
 
-    private func recordFrame(_ pts: CMTime) {
+    /// 合成并写入一帧录像；返回这一帧的成品缓冲（取景直接拿它显示）。这一帧没写成（写入器忙等）时返回 nil。
+    @discardableResult
+    private func recordFrame(_ pts: CMTime) -> CVPixelBuffer? {
         if !started {
-            guard wantRecord else { return }
-            if !prepareWriter(firstPTS: pts) { wantRecord = false; isRecording = false; return }
+            guard wantRecord else { return nil }
+            if !prepareWriter(firstPTS: pts) { wantRecord = false; isRecording = false; return nil }
             isRecording = true; wantRecord = false
         }
-        guard isRecording, let vi = vIn, let ad = adaptor, vi.isReadyForMoreMediaData, let pool = ad.pixelBufferPool else { return }
+        guard isRecording, let vi = vIn, let ad = adaptor, vi.isReadyForMoreMediaData, let pool = ad.pixelBufferPool else { return nil }
         lock.lock(); let b = lastBack, f = lastFront; lock.unlock()
-        guard let back = b else { return }
+        guard let back = b else { return nil }
         var out: CVPixelBuffer?
-        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let dst = out else { return }
+        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let dst = out else { return nil }
         let img = compose(back: back, front: f, size: canvas)
         ci.render(img, to: dst, bounds: CGRect(origin: .zero, size: canvas), colorSpace: rgb)
         if !ad.append(dst, withPresentationTime: pts) { failMsg = writer?.error?.localizedDescription }
+        return dst
     }
 
     private func appendAudio(_ sb: CMSampleBuffer) {
@@ -766,36 +784,44 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             }
         }
     }
-    private var liveJob: LiveJob?
+    /// 同时可以有好几张实况在「边收边写」（连拍）；每张各自收到自己的总时长就收尾
+    private var liveJobs: [LiveJob] = []
+    static let maxLiveJobs = 4
 
     /// 实况开着时，持续把最近 1.5 秒（合成 + 调色后、缩小到长边 720）留在内存里；快门后边收边写文件。
-    private func collectLive(back: CVPixelBuffer, front: CVPixelBuffer?, pts: CMTime) {
-        guard liveEnabled || liveJob != nil, !isRecording, let pool = livePool else { return }
+    /// 画面直接从刚画好的取景成品缩小得到，不再另外「合成 + 调色」一遍。
+    private func collectLive(from src: CVPixelBuffer, pts: CMTime) {
+        guard liveEnabled || !liveJobs.isEmpty, !isRecording, let pool = livePool else { return }
         pvFrameN += 1
-        if actualBackFps > 35 && pvFrameN % 2 == 1 { return }       // 60 帧时隔帧取，实况视频按 30 帧
+        if actualBackFps > 35 && fullRate && pvFrameN % 2 == 1 { return }       // 满帧 60 时隔帧取，实况视频按 30 帧
         var out: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let dst = out else { return }
-        let img = compose(back: back, front: front, size: liveSize)
+        let img = CIImage(cvPixelBuffer: src).transformed(by: CGAffineTransform(scaleX: liveSize.width / max(1, pvSize.width), y: liveSize.height / max(1, pvSize.height)))
         ci.render(img, to: dst, bounds: CGRect(origin: .zero, size: liveSize), colorSpace: rgb)
         let fr = LiveFrame(pb: dst, pts: pts)
-        if let job = liveJob {
-            job.pending.append(fr)
-            job.drain()
-            let t = CMTimeGetSeconds(CMTimeSubtract(pts, job.base))
-            if t >= job.need {
-                liveJob = nil
-                writeQueue.async {
-                    var n = 0
-                    while !job.pending.isEmpty && n < 3000 { job.drain(); usleep(2000); n += 1 }
-                    job.vi.markAsFinished()
-                    job.writer.finishWriting {
-                        if job.writer.status == .completed { job.done(job.url, job.still, nil) }
-                        else { job.done(nil, 0, job.writer.error?.localizedDescription ?? "实况合成失败") }
+        if !liveJobs.isEmpty {
+            var finished: [LiveJob] = []
+            for job in liveJobs {
+                job.pending.append(fr)
+                job.drain()
+                if CMTimeGetSeconds(CMTimeSubtract(pts, job.base)) >= job.need { finished.append(job) }
+            }
+            if !finished.isEmpty {
+                liveJobs.removeAll { j in finished.contains { $0 === j } }
+                for job in finished {
+                    writeQueue.async {
+                        var n = 0
+                        while !job.pending.isEmpty && n < 3000 { job.drain(); usleep(2000); n += 1 }
+                        job.vi.markAsFinished()
+                        job.writer.finishWriting {
+                            if job.writer.status == .completed { job.done(job.url, job.still, nil) }
+                            else { job.done(nil, 0, job.writer.error?.localizedDescription ?? "实况合成失败") }
+                        }
                     }
                 }
             }
-            return
         }
+        // 环形缓存一直收（连拍时后一张的「快门前 1.5 秒」要靠它）
         liveRing.append(fr)
         while let f = liveRing.first, CMTimeGetSeconds(CMTimeSubtract(pts, f.pts)) > 1.5 { liveRing.removeFirst() }
     }
@@ -803,7 +829,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     /// 按下快门：取走环形缓存，继续收到总长 totalSeconds，合成 MOV。done(MOV 文件, 静帧所在秒数, 错误)
     func captureLive(totalSeconds: Double, done: @escaping (URL?, Double, String?) -> Void) {
         dataQueue.async {
-            guard self.liveJob == nil else { done(nil, 0, "上一张实况还在合成"); return }
+            guard self.liveJobs.count < DualCamEngine.maxLiveJobs else { done(nil, 0, "同时合成的实况已满 \(DualCamEngine.maxLiveJobs) 张，请稍等"); return }
             guard let first = self.liveRing.first, let last = self.liveRing.last else { done(nil, 0, "实况缓存还没准备好，请稍等一下再拍"); return }
             let size = self.liveSize
             let url = SchemeHandler.outDir.appendingPathComponent("澄影双摄_实况_\(UUID().uuidString).mov")
@@ -822,9 +848,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 let still = CMTimeGetSeconds(CMTimeSubtract(last.pts, first.pts))
                 let job = LiveJob(writer: w, vi: vi, ad: ad, pending: self.liveRing, base: first.pts,
                                   need: max(1.0, totalSeconds), still: still, url: url, done: done)
-                self.liveRing.removeAll()
                 job.drain()
-                self.liveJob = job
+                self.liveJobs.append(job)
             } catch { done(nil, 0, error.localizedDescription) }
         }
     }

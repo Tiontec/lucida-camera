@@ -13,6 +13,7 @@ import AVFoundation
 ///   focus     {x,y,lock,release,label,position,angle}     点按对焦 / 长按锁定 AE·AF（原生设置摄像头对焦点）
 ///   haptic    {style}                                     触感
 ///   probe     {}                                          重新检测设备摄像头
+///   page      {name:"about"|"ver"|"donate"|"update"}      打开原生的 关于 / 版本更新 / 赞赏 页；update = 启动时的更新弹窗（每个版本只弹一次）
 ///   dualCamOpen {mode:"photo"|"video"}                    进入原生双摄相机（前后摄像头同时拍照 / 录像）；关闭后返回
 ///                                                         {ok:true,items:[{kind,url,name,saved}]} 或 {ok:false,code:"unsupported"|"denied"|"error",error}
 ///   dualCamClean {names:[...]}                            网页导入完后，删掉原生留下的临时文件（names 为空 = 全删双摄文件）
@@ -49,6 +50,13 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply {
             g.impactOccurred(); reply(true, nil)
         case "probe":
             reply(DeviceProbe.info(), nil)
+        case "page":
+            // 关于 / 版本更新 / 赞赏 / 启动更新弹窗：原生页面（B1a）
+            let name = (body["name"] as? String) ?? ""
+            DispatchQueue.main.async { [weak self] in
+                if let vc = self?.host { NativePages.open(name, from: vc) }
+                reply(true, nil)
+            }
         case "dualCamOpen":
             openDualCam(mode: (body["mode"] as? String) ?? "photo", reply)
         case "dualCamClean":

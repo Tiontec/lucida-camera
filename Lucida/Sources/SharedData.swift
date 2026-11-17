@@ -11,13 +11,13 @@ struct StylePreset {
 }
 
 enum SharedApp {
-    static let version = "11.4.0"
-    static let build = 32
+    static let version = "11.5.0"
+    static let build = 33
 }
 
 enum SharedGrade {
-    static let toneK = 0.6, satK = 0.8, fadeK = 1.0
-    static let texOn = 0.004, grainOn = 0.004, grainK = 0.3
+    static let toneK: Double = 0.6, satK: Double = 0.8, fadeK: Double = 1
+    static let texOn: Double = 0.004, grainOn: Double = 0.004, grainK: Double = 0.3
     /// 质感系数：行 = 标准 / 柔肤 / 光晕 / 胶片，列 = con sat hi sh tmp cl sp gr hal
     static let texKeys = ["con", "sat", "hi", "sh", "tmp", "cl", "sp", "gr", "hal"]
     static let texCoef: [[Double]] = [
