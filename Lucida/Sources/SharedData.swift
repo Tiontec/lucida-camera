@@ -11,8 +11,8 @@ struct StylePreset {
 }
 
 enum SharedApp {
-    static let version = "11.5.0"
-    static let build = 33
+    static let version = "11.5.1"
+    static let build = 34
 }
 
 enum SharedGrade {

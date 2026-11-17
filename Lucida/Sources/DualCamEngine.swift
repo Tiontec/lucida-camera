@@ -111,6 +111,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private var livePool: CVPixelBufferPool?
     private var pvFrameN = 0
     private var previewN = 0
+    private var frontSeq = 0, pvFrontSeq = 0     // 前置来了第几帧 / 取景已经画到第几帧（前置帧率比后置低时，取景跟着前置帧走，小窗才不会一顿一顿）
+    private var actualFrontFps = 30
 
     // 录像
     private var writer: AVAssetWriter?
@@ -125,9 +127,9 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private(set) var isRecording = false
     private var failMsg: String?
 
-    // 实况
-    private struct LiveFrame { let pb: CVPixelBuffer; let pts: CMTime }
-    private var liveRing: [LiveFrame] = []
+    // 实况：一路连续编码 + 压缩样本库（见 LiveEncoder.swift），每张实况只是库里的一个时间窗口
+    private var liveEnc: LiveEncoder?
+    private var liveLastPTS = CMTime.invalid
 
     static var isSupported: Bool { AVCaptureMultiCamSession.isMultiCamSupported }
 
@@ -244,7 +246,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         for f in [30, 24] where ffOpt == nil && f < s.fps { ffps = f; ffOpt = pickFormat(front, bound: s.bound, fps: f, full: s.full) }
         guard let ff = ffOpt else { throw DualError.unsupported("前置摄像头没有可用的「同时工作」规格") }
         try setFormat(back, bf, fps: s.fps); try setFormat(front, ff, fps: ffps)
-        actualBackFps = s.fps
+        actualBackFps = s.fps; actualFrontFps = ffps
 
         session.beginConfiguration()
         defer { session.commitConfiguration() }
@@ -370,7 +372,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             let old = self.spec
             if self.session.isRunning { self.session.stopRunning() }
             self.lock.lock(); self.lastBack = nil; self.lastFront = nil; self.lock.unlock()
-            self.dataQueue.sync { self.liveRing.removeAll() }
+            self.dataQueue.sync { self.flushLiveJobs(); self.liveEnc?.shutdown(); self.liveEnc = nil; self.liveLastPTS = .invalid }
             DispatchQueue.main.async { self.previewLayer.flushAndRemoveImage() }
             let keepBack = self.backZoom, keepFront = self.frontZoom
             do {
@@ -521,14 +523,21 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         if output === audioOut { appendAudio(sampleBuffer); return }
         guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         if output === frontOut {
-            lock.lock(); lastFront = pb; lock.unlock()
+            lock.lock(); lastFront = pb; frontSeq &+= 1; lock.unlock()
             return
         }
         guard output === backOut else { return }
-        lock.lock(); lastBack = pb; let f = lastFront; lock.unlock()
+        lock.lock(); lastBack = pb; let f = lastFront; let fSeq = frontSeq; lock.unlock()
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         previewN += 1
-        let wantPv = fullRate || actualBackFps <= 35 || previewN % 2 == 0     // 60 帧时预览隔帧刷新，把算力留给录像
+        // 60 帧时预览隔帧刷新，把算力留给录像。前置一般只有 30 帧：这时取景「有新的前置帧就画一次」（约 30 次/秒），
+        // 而不是机械地隔一帧画一次——两个 30 的节拍对不齐，小窗里的前置画面会时快时慢、一顿一顿的。
+        let frontDriven = actualBackFps > 35 && actualFrontFps <= 35 && !fullRate
+        let wantPv: Bool
+        if fullRate || actualBackFps <= 35 { wantPv = true }
+        else if frontDriven { wantPv = fSeq != pvFrontSeq || previewN % 4 == 0 }
+        else { wantPv = previewN % 2 == 0 }
+        if wantPv { pvFrontSeq = fSeq }
         // 每一帧「合成 + 调色」只做一次，成品同时给 录像 / 取景 / 实况 用（以前三处各算一遍，调色一开就卡）
         var shown: CVPixelBuffer?
         var shownIsPreview = false
@@ -767,90 +776,82 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     // MARK: - 实况照片
 
-    private final class LiveJob {
-        let writer: AVAssetWriter, vi: AVAssetWriterInput, ad: AVAssetWriterInputPixelBufferAdaptor
-        var pending: [LiveFrame]
-        let base: CMTime, need: Double, still: Double, url: URL
+    /// 一张还没收完的实况：窗口 = [快门前 1.5 秒, 起点 + 总时长]。同时可以有任意多张（连拍）
+    private struct LiveJob {
+        let id: UUID, enc: LiveEncoder
+        let start: CMTime, shutter: CMTime, end: CMTime
         let done: (URL?, Double, String?) -> Void
-        init(writer: AVAssetWriter, vi: AVAssetWriterInput, ad: AVAssetWriterInputPixelBufferAdaptor, pending: [LiveFrame],
-             base: CMTime, need: Double, still: Double, url: URL, done: @escaping (URL?, Double, String?) -> Void) {
-            self.writer = writer; self.vi = vi; self.ad = ad; self.pending = pending; self.base = base
-            self.need = need; self.still = still; self.url = url; self.done = done
-        }
-        func drain() {
-            while !pending.isEmpty && vi.isReadyForMoreMediaData {
-                let f = pending.removeFirst()
-                _ = ad.append(f.pb, withPresentationTime: CMTimeSubtract(f.pts, base))
-            }
-        }
     }
-    /// 同时可以有好几张实况在「边收边写」（连拍）；每张各自收到自己的总时长就收尾
     private var liveJobs: [LiveJob] = []
-    static let maxLiveJobs = 4
 
-    /// 实况开着时，持续把最近 1.5 秒（合成 + 调色后、缩小到长边 720）留在内存里；快门后边收边写文件。
+    /// 实况开着时，持续把取景成品（合成 + 调色后、缩小到长边 720）送进那一路编码器。
     /// 画面直接从刚画好的取景成品缩小得到，不再另外「合成 + 调色」一遍。
     private func collectLive(from src: CVPixelBuffer, pts: CMTime) {
         guard liveEnabled || !liveJobs.isEmpty, !isRecording, let pool = livePool else { return }
         pvFrameN += 1
         if actualBackFps > 35 && fullRate && pvFrameN % 2 == 1 { return }       // 满帧 60 时隔帧取，实况视频按 30 帧
+        if liveEnc == nil || liveEnc!.size != liveSize { liveEnc = LiveEncoder(size: liveSize) }
+        guard let enc = liveEnc else { return }
+        // 画面断过（录像期间 / 刚把实况打开）：旧样本接不上新画面，清掉重来
+        if liveLastPTS.isValid, CMTimeGetSeconds(CMTimeSubtract(pts, liveLastPTS)) > 0.5, liveJobs.isEmpty { enc.reset() }
         var out: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let dst = out else { return }
         let img = CIImage(cvPixelBuffer: src).transformed(by: CGAffineTransform(scaleX: liveSize.width / max(1, pvSize.width), y: liveSize.height / max(1, pvSize.height)))
         ci.render(img, to: dst, bounds: CGRect(origin: .zero, size: liveSize), colorSpace: rgb)
-        let fr = LiveFrame(pb: dst, pts: pts)
+        enc.encode(dst, pts: pts)
+        liveLastPTS = pts
+        // 收到点的实况收尾
         if !liveJobs.isEmpty {
-            var finished: [LiveJob] = []
-            for job in liveJobs {
-                job.pending.append(fr)
-                job.drain()
-                if CMTimeGetSeconds(CMTimeSubtract(pts, job.base)) >= job.need { finished.append(job) }
-            }
-            if !finished.isEmpty {
-                liveJobs.removeAll { j in finished.contains { $0 === j } }
-                for job in finished {
-                    writeQueue.async {
-                        var n = 0
-                        while !job.pending.isEmpty && n < 3000 { job.drain(); usleep(2000); n += 1 }
-                        job.vi.markAsFinished()
-                        job.writer.finishWriting {
-                            if job.writer.status == .completed { job.done(job.url, job.still, nil) }
-                            else { job.done(nil, 0, job.writer.error?.localizedDescription ?? "实况合成失败") }
-                        }
-                    }
-                }
+            let fin = liveJobs.filter { CMTimeCompare(pts, $0.end) >= 0 }
+            if !fin.isEmpty {
+                let ids = Set(fin.map { $0.id })
+                liveJobs.removeAll { ids.contains($0.id) }
+                fin.forEach { finishJob($0) }
             }
         }
-        // 环形缓存一直收（连拍时后一张的「快门前 1.5 秒」要靠它）
-        liveRing.append(fr)
-        while let f = liveRing.first, CMTimeGetSeconds(CMTimeSubtract(pts, f.pts)) > 1.5 { liveRing.removeFirst() }
     }
 
-    /// 按下快门：取走环形缓存，继续收到总长 totalSeconds，合成 MOV。done(MOV 文件, 静帧所在秒数, 错误)
+    /// 在写文件的线程里：等编码器吐完 → 取窗口里的压缩样本 → 直通写成 MOV。一次只写一张，排队，不占额外编码器
+    private func finishJob(_ j: LiveJob) {
+        writeQueue.async {
+            j.enc.finish(until: j.end)
+            let clip = j.enc.clip(from: j.start, until: j.end)
+            j.enc.release(j.id)
+            guard let first = clip.first else { j.done(nil, 0, "实况缓存里没有画面"); return }
+            let url = SchemeHandler.outDir.appendingPathComponent("澄影双摄_实况_\(UUID().uuidString).mov")
+            if let e = LiveEncoder.writeMOV(clip, to: url) {
+                try? FileManager.default.removeItem(at: url)
+                j.done(nil, 0, e)
+            } else {
+                j.done(url, max(0, CMTimeGetSeconds(CMTimeSubtract(j.shutter, first.pts))), nil)
+            }
+        }
+    }
+
+    /// 取景停了 / 要重配规格：把还没收完的实况按现有的画面立刻收尾
+    private func flushLiveJobs() {
+        let all = liveJobs; liveJobs.removeAll()
+        all.forEach { finishJob($0) }
+    }
+
+    /// 按下快门：登记一个窗口（快门前 1.5 秒 → 总长 totalSeconds），到点后自动合成 MOV。可以连续按任意多次。
+    /// done(MOV 文件, 静帧所在秒数, 错误)
     func captureLive(totalSeconds: Double, done: @escaping (URL?, Double, String?) -> Void) {
         dataQueue.async {
-            guard self.liveJobs.count < DualCamEngine.maxLiveJobs else { done(nil, 0, "同时合成的实况已满 \(DualCamEngine.maxLiveJobs) 张，请稍等"); return }
-            guard let first = self.liveRing.first, let last = self.liveRing.last else { done(nil, 0, "实况缓存还没准备好，请稍等一下再拍"); return }
-            let size = self.liveSize
-            let url = SchemeHandler.outDir.appendingPathComponent("澄影双摄_实况_\(UUID().uuidString).mov")
-            do {
-                try? FileManager.default.removeItem(at: url)
-                let w = try AVAssetWriter(outputURL: url, fileType: .mov)
-                let vs: [String: Any] = [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
-                                         AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: Int(size.width * size.height * 8)]]
-                let vi = AVAssetWriterInput(mediaType: .video, outputSettings: vs)
-                vi.expectsMediaDataInRealTime = true
-                let ad = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: vi, sourcePixelBufferAttributes: nil)
-                guard w.canAdd(vi) else { done(nil, 0, "无法创建实况视频"); return }
-                w.add(vi)
-                guard w.startWriting() else { done(nil, 0, w.error?.localizedDescription ?? "无法写入"); return }
-                w.startSession(atSourceTime: .zero)
-                let still = CMTimeGetSeconds(CMTimeSubtract(last.pts, first.pts))
-                let job = LiveJob(writer: w, vi: vi, ad: ad, pending: self.liveRing, base: first.pts,
-                                  need: max(1.0, totalSeconds), still: still, url: url, done: done)
-                job.drain()
-                self.liveJobs.append(job)
-            } catch { done(nil, 0, error.localizedDescription) }
+            guard let enc = self.liveEnc, self.liveLastPTS.isValid else { done(nil, 0, "实况缓存还没准备好，请稍等一下再拍"); return }
+            let shutter = self.liveLastPTS
+            let start = CMTimeSubtract(shutter, CMTime(seconds: 1.5, preferredTimescale: 600))
+            let total = max(1.0, totalSeconds)
+            let end = CMTimeAdd(start, CMTime(seconds: total, preferredTimescale: 600))
+            let id = UUID()
+            enc.hold(id, from: start)
+            self.liveJobs.append(LiveJob(id: id, enc: enc, start: start, shutter: shutter, end: end, done: done))
+            // 保险：万一画面中途断了，到时间也要收尾，不让这一张一直挂着
+            self.dataQueue.asyncAfter(deadline: .now() + total + 4) { [weak self] in
+                guard let self = self, let i = self.liveJobs.firstIndex(where: { $0.id == id }) else { return }
+                let j = self.liveJobs.remove(at: i)
+                self.finishJob(j)
+            }
         }
     }
 }

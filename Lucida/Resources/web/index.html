@@ -2991,7 +2991,7 @@ function syncStyleUI(){
   const i=orderIdx(),N=ST.order.length,s0=Math.max(0,Math.min(N-5,i-2));
   $('#stDots').innerHTML=Array.from({length:5},(_,k)=>{const n=s0+k,edge=(k===0&&s0>0)||(k===4&&s0+4<N-1);return`<i class="${n===i?'on':''}${edge?' sm':''}"></i>`}).join('');
   const side=(el,n)=>{const q=ST.order[n];el.classList.toggle('on',ST.open&&!!q);if(q)el.style.setProperty('--pk',styleBase(q).tint.map(v=>Math.round(Math.min(1,v*1.2)*255)).join(','))};
-  side($('#pkL'),(i-1+N)%N);side($('#pkR'),(i+1)%N);
+  side($('#pkL'),i-1);side($('#pkR'),i+1);
   $('#btnStyle').classList.toggle('on',ST.open||gradeActive());
 }
 function syncPeeks(){
@@ -3013,9 +3013,10 @@ function applyPreset(sid){const p=styleBase(sid);ST.cur.sid=sid;tweenStyle({x:p.
 function slideFx(dir){vfEl.classList.add('snap');vfEl.style.translate=(dir*26)+'px 0';void vfEl.offsetWidth;vfEl.classList.remove('snap');vfEl.style.translate=''}
 function stepPreset(dir){
   if(typeof pinStd==='function')pinStd();
-  /* 首尾相接：「标准」再往右滑回到最后一个，最后一个再往左滑回到「标准」 */
+  /* 首尾断开：「标准」是左头，最后一个是右头，到头了不能再滑，只能往回滑 */
   const N=ST.order.length;let i=ST.order.indexOf(ST.cur.sid);if(i<0)i=0;
-  const n=(i+(dir>0?1:-1)+N)%N;
+  const n=i+(dir>0?1:-1);
+  if(n<0||n>=N){slideFx(dir>0?-0.4:0.4);return}
   applyPreset(ST.order[n]);slideFx(dir);
 }
 function stDrag(dx){if(!ST.open)return;vfEl.classList.add('drag');vfEl.style.translate=Math.max(-30,Math.min(30,dx*.28))+'px 0'}
@@ -3449,7 +3450,7 @@ function loop(t){
 }
 
 /* ===== v3.3.4：镜头检测 / 长焦切换 / 变焦放大取景框 / 版本更新 ===== */
-const APP_VER='11.5.0';
+const APP_VER='11.5.1';
 try{const av=$('#aboutVer');if(av)av.textContent='LUCIDA · 版本 '+APP_VER+(window.LUCIDA_WATCH?' · 手表版':'')}catch(e){}
 const UPDATES=[];
 const verItemsHtml=u=>'<ul>'+u.items.map(t=>'<li>'+t+'</li>').join('')+'</ul>';
@@ -5092,8 +5093,11 @@ function dualClose(msg){
   if(mode==='seq')dualSeqEnd();
   dualLayout();mfSync();if(msg)toast(msg)}
 async function dualGrab(){ /* 打开前摄并验证：两路画面都必须真的在走帧 */
-  const st=await gUM({video:{facingMode:{ideal:'user'},width:{ideal:960},height:{ideal:1280}},audio:false});
-  dualVid.srcObject=st;try{await dualVid.play()}catch(_){}
+  /* 有些手机上，后置开着时再要前置，系统既不给也不报错（一直没有结果）：8 秒超时当失败处理，别让整个页面卡死 */
+  let timedOut=false;const pr=gUM({video:{facingMode:{ideal:'user'},width:{ideal:960},height:{ideal:1280}},audio:false});
+  const st=await Promise.race([pr,new Promise((_,rej)=>setTimeout(()=>{timedOut=true;const e=new Error('前置摄像头 8 秒没有响应');e.name='TimeoutError';rej(e)},8000))]);
+  pr.then(x=>{if(timedOut)try{x.getTracks().forEach(t=>t.stop())}catch(_){}},()=>{});
+  dualVid.srcObject=st;try{await Promise.race([dualVid.play(),dsleep(2500)])}catch(_){}
   const t0=V.currentTime,f0=dualVid.currentTime;await dsleep(1300);
   const back=S.stream&&S.stream.getVideoTracks()[0],ft=st.getVideoTracks()[0];
   const okBack=!!back&&back.readyState==='live'&&!back.muted&&!V.paused&&V.currentTime>t0+.3;
@@ -5113,6 +5117,8 @@ async function dualOpen(){
   if(S.facing!=='environment'){toast('请先切换到后置相机，再开双摄');return}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showDlg('不能使用双摄','此浏览器不能访问摄像头。');return}
   DUAL.busy=true;DUAL.why=nativeWhy;
+  /* 原生已经试过「前后同时」并且不行 → 网页同样不行，直接用分时双摄，不再白等 */
+  if(nativeWhy){DUAL.busy=false;return dualSeqStart(nativeWhy)}
   /* ② 网页同时开前后两路摄像头（一部分安卓手机 / 电脑浏览器允许）；不行再用分时双摄 */
   toast('正在打开前置摄像头…');let r=null;
   try{r=await dualGrab()}
@@ -5147,7 +5153,7 @@ async function dualSeqGrab(){ /* 切到前置抓一帧，再切回后置 */
   DUAL.still=c;DUAL.stillN++;dualStillView();return true}
 async function dualSeqStart(reason){
   if(DUAL.busy)return;DUAL.busy=true;DUAL.why=reason||'';
-  toast('这台设备一次只能开一颗摄像头：改用「分时双摄」');
+  toast(reason?String(reason).slice(0,160)+'；改用「分时双摄」（一次只开一颗摄像头）':'这台设备一次只能开一颗摄像头：改用「分时双摄」');
   try{
     DUAL.poolOff0=S.poolOff;S.poolOff=true;try{poolTeardown()}catch(_){}      /* 镜头预热池会抢摄像头，分时双摄期间关掉 */
     if(window.LP&&LP.on){DUAL.lpWas=true;try{$('#btnLive').click()}catch(_){}}   /* 实况要连续收画面，和切镜头冲突，先关掉，退出双摄后再开回来 */
@@ -11639,7 +11645,7 @@ const LGN=window.LGN=(()=>{
     const d=info&&info.dual;
     if(!d)return{ok:false,why:'没有拿到摄像头信息'};
     if(!d.ok)return{ok:false,why:d.why||'没有找到前置或后置摄像头'};
-    if(d.concurrent===false)return{ok:false,why:'系统不允许前后摄像头同时工作（这台设备的硬件限制）'};
+    /* 系统没把前后摄像头列进「可同时工作」名单（concurrent===false）：很多手机的系统清单偏保守，也可能真不行——不预判，让原生真试一次；不行时原生会带着诊断信息报回来，再改用分时双摄 */
     return{ok:true,why:''};
   }
 

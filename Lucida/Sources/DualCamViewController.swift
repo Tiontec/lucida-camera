@@ -32,6 +32,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private let toastBox = DualToastView()
     private let hintStack = UIStackView()          // 取景框左上角：实况计时 + 提示条，从上往下排
     private let timerLabel = UILabel()
+    private var timerTop: NSLayoutConstraint!   // 调色盘打开时录像时间往下让开参数栏
     private let spinner = UIActivityIndicatorView(style: .large)
     private let specPill = DualPillButton()
     private let specPanel = UIView()
@@ -238,7 +239,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         timerLabel.backgroundColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 1); timerLabel.layer.cornerRadius = 12
         timerLabel.clipsToBounds = true; timerLabel.textAlignment = .center; timerLabel.isHidden = true
         timerLabel.translatesAutoresizingMaskIntoConstraints = false; stage.addSubview(timerLabel)
-        timerLabel.topAnchor.constraint(equalTo: stage.topAnchor, constant: 10).isActive = true
+        timerTop = timerLabel.topAnchor.constraint(equalTo: stage.topAnchor, constant: 10); timerTop.isActive = true
         timerLabel.centerXAnchor.constraint(equalTo: stage.centerXAnchor).isActive = true
         timerLabel.widthAnchor.constraint(equalToConstant: 92).isActive = true; timerLabel.heightAnchor.constraint(equalToConstant: 24).isActive = true
 
@@ -396,7 +397,9 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         var l = engine.layout; l.backIsMain.toggle(); engine.layout = l; st.backIsMain = l.backIsMain
         syncZoomRange(resetTo: nil)
     }
-    @objc private func toggleSpecPanel() { setSpecPanel(specPanel.isHidden) }
+    /// 要的是哪个状态（按「最后一次点的意思」切换，不看动画走到哪一步；否则收起动画途中再点一下会变成「再收一次」，像是打不开）
+    private var specWanted = false
+    @objc private func toggleSpecPanel() { setSpecPanel(!specWanted) }
 
     /// 规格面板展开 / 收起：开了液态玻璃就像史莱姆一样 Q 弹地从「帧率画质」那颗胶囊下面弹出、再缩回到那里；没开就直接显示 / 隐藏。
     /// 玻璃本身用「在动画里把 effect 设成 / 取消」来出现和消失（只改透明度的话，玻璃会在原地留几帧残影）。
@@ -409,6 +412,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         return CGAffineTransform(a: s, b: 0, c: 0, d: s, tx: (1 - s) * (px - c.x), ty: (1 - s) * (py - c.y))
     }
     private func setSpecPanel(_ open: Bool) {
+        specWanted = open
         if open == !specPanel.isHidden && !specAnimating { return }
         specPanel.layer.removeAllAnimations(); specBack.layer.removeAllAnimations()
         specGen += 1; let gen = specGen
@@ -508,6 +512,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private func setPalette(_ on: Bool) {
         paletteOpen = on; palette.isHidden = !on; bottomBar.isHidden = on; zoomCtl.isHidden = on
         readout.isHidden = !on; presetLabel.isHidden = !on; pageDots.isHidden = !on
+        timerTop.constant = on ? 44 : 10
+        UIView.animate(withDuration: 0.2) { self.stage.layoutIfNeeded() }
         if on { focusBox.hide() }
         if on { palette.syncFromState(); paletteChanged() }
         syncButtons()
@@ -537,7 +543,10 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         guard paletteOpen else { return }
         // 按「更多设置 → 调色盘预设顺序」里排好的顺序切换
         let order = PresetOrder.indices, n = order.count, pos = order.firstIndex(of: shownGrade.presetIndex) ?? 0
-        let ni = order[g.direction == .left ? (pos + 1) % n : (pos - 1 + n) % n]
+        // 首尾断开：「标准」是左头，最后一个是右头，到头了不再循环
+        let np = g.direction == .left ? pos + 1 : pos - 1
+        guard np >= 0, np < n else { return }
+        let ni = order[np]
         gradeTargets.forEach { $0.selectPreset(ni) }
         palette.syncFromState(); paletteChanged()
     }
@@ -722,7 +731,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         let show = st.liveTimer
         liveStack.isHidden = !show || liveTasks.isEmpty
         let pre = 1.5
-        for t in liveTasks {
+        for (idx, t) in liveTasks.enumerated() {
+            t.row.isHidden = idx < liveTasks.count - 6        // 连拍很多张时只显示最新 6 行，免得铺满取景框
             switch t.phase {
             case 0:
                 let e = min(t.total, min(pre, t.total / 2) + Date().timeIntervalSince(t.t0))
