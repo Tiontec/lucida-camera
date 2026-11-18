@@ -35,7 +35,7 @@
 全部在 **[Releases](https://github.com/Tiontec/lucida-camera/releases)**：
 
 - `v1.1.0` / `v1.0.0` —— 重构版（`LucidaRebuild-unsigned-*.ipa`，自签后安装）
-- `v11.1.0` ~ `v11.6.0` —— **网页版历史版本（已停更，仍可下载）**
+- `v11.1.0` ~ `v11.5.1` —— **网页版历史版本（已停更，仍可下载）**
 
 ## 本机构建
 
