@@ -33,6 +33,10 @@ final class DualSettings {
     var mirror: Bool { get { d.object(forKey: key("mirror")) as? Bool ?? true } set { d.set(newValue, forKey: key("mirror")) } }
     var audio: Bool { get { d.object(forKey: key("audio")) as? Bool ?? true } set { d.set(newValue, forKey: key("audio")) } }
     var pipStyleSplit: Bool { get { d.bool(forKey: key("split")) } set { d.set(newValue, forKey: key("split")) } }
+    /// 双摄开关（默认关）。关 = 单摄；开 = 前后摄像头同时工作（设备不支持时开不了）
+    var dualOn: Bool { get { d.object(forKey: key("dualOn")) as? Bool ?? false } set { d.set(newValue, forKey: key("dualOn")) } }
+    /// 单摄时用前置摄像头
+    var singleFront: Bool { get { d.bool(forKey: key("singleFront")) } set { d.set(newValue, forKey: key("singleFront")) } }
     var backIsMain: Bool { get { d.object(forKey: key("backMain")) as? Bool ?? true } set { d.set(newValue, forKey: key("backMain")) } }
 
     /// 满帧画面运行录制：开 = 不因设备发烫自动降帧，预览和录制都按所选帧率；关 = 发烫时自动降到 30 帧并减半取景渲染，保证录完的视频流畅

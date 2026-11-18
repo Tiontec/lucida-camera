@@ -57,7 +57,12 @@ struct DualSpec: Equatable {
 }
 
 final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
-    let session = AVCaptureMultiCamSession()
+    /// 双摄时是 AVCaptureMultiCamSession；单摄时是普通 AVCaptureSession（不需要设备支持双摄）。切换模式时重新建
+    private(set) var session: AVCaptureSession = AVCaptureSession()
+    /// 双摄开关：false = 单摄（用 layout.backIsMain 决定是后置还是前置）
+    var dual = false
+    /// 单摄模式下是否由前置摄像头出画面（= !layout.backIsMain）
+    private var singleFront: Bool { !layout.backIsMain }
     let sessionQueue = DispatchQueue(label: "lucida.dual.session")
     private let dataQueue = DispatchQueue(label: "lucida.dual.data", qos: .userInitiated)
     private let audioQueue = DispatchQueue(label: "lucida.dual.audio", qos: .userInitiated)
@@ -145,6 +150,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     @discardableResult
     func configure(_ want: DualSpec, wantAudio: Bool) throws -> String {
         wantAudioSaved = wantAudio
+        if !dual { return try configureSingle(want, wantAudio: wantAudio) }
         guard AVCaptureMultiCamSession.isMultiCamSupported else {
             throw DualError.unsupported("这台 iPhone 不支持前后摄像头同时工作（需要 iPhone XS / XR 及以后的机型）")
         }
@@ -171,7 +177,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 resetSession()
                 do {
                     try build(back: back, front: front, spec: s, wantAudio: wantAudio)
-                    if session.hardwareCost <= 1.0 && session.systemPressureCost <= 1.0 {
+                    if let ms = session as? AVCaptureMultiCamSession, ms.hardwareCost <= 1.0 && ms.systemPressureCost <= 1.0 {
                         spec = s
                         watchPressure()
                         backZoom = 1; frontZoom = 1
@@ -182,13 +188,86 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                         if s.fps != w.fps { parts.append("帧率 \(w.fps) → \(s.fps)") }
                         return "两颗摄像头同时工作时，系统带宽撑不住所选规格，已自动调整：" + parts.joined(separator: "，")
                     }
-                    lastWhy = "硬件负载过高（\(String(format: "%.2f", session.hardwareCost))）"
+                    lastWhy = "硬件负载过高（\(String(format: "%.2f", (session as? AVCaptureMultiCamSession)?.hardwareCost ?? 0))）"
                 } catch let e as DualError {
                     lastWhy = e.message
                 }
             }
         }
         throw DualError.unsupported(lastWhy)
+    }
+
+    /// 单摄：普通会话，一颗摄像头（后置 / 前置）。规格逐级降（帧率 → 分辨率），一般不会失败。
+    private func configureSingle(_ want: DualSpec, wantAudio: Bool) throws -> String {
+        let useFront = singleFront
+        let uwDev = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back)
+        hasUltraWide = uwDev != nil
+        var w = want
+        if (w.ultraWide && uwDev == nil) || useFront { w.ultraWide = false }
+        let backType: AVCaptureDevice.DeviceType = w.ultraWide ? .builtInUltraWideCamera : .builtInWideAngleCamera
+        let backDev = AVCaptureDevice.default(backType, for: .video, position: .back)
+        let frontDev = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+        backDevice = backDev; frontDevice = frontDev
+        guard let dev = useFront ? frontDev : backDev else { throw DualError.unsupported(useFront ? "没有找到前置摄像头" : "没有找到后置摄像头") }
+        var resList = [w.res]
+        for r in [2160, 1080, 720] where r < w.res { resList.append(r) }
+        var lastWhy = "摄像头没有可用的规格"
+        for r in resList {
+            var fpsList = [w.fps]
+            if w.fps > 30 { fpsList.append(30) }
+            if w.fps >= 30 { fpsList.append(24) }
+            for f in fpsList {
+                var s = w; s.res = r; s.fps = f
+                if session is AVCaptureMultiCamSession { if session.isRunning { session.stopRunning() }; session = AVCaptureSession() }
+                resetSession()
+                do {
+                    try buildSingle(device: dev, spec: s, wantAudio: wantAudio)
+                    spec = s
+                    backZoom = 1; frontZoom = 1
+                    if s.ultraWide { backZoom = 0.5 }
+                    if s == w { return "" }
+                    var parts: [String] = []
+                    if s.res != w.res { parts.append("分辨率 \(w.res == 2160 ? "4K" : "\(w.res)p") → \(s.res == 2160 ? "4K" : "\(s.res)p")") }
+                    if s.fps != w.fps { parts.append("帧率 \(w.fps) → \(s.fps)") }
+                    return "这颗摄像头不支持所选规格，已自动调整：" + parts.joined(separator: "，")
+                } catch let e as DualError { lastWhy = e.message }
+            }
+        }
+        throw DualError.unsupported(lastWhy)
+    }
+
+    private func buildSingle(device: AVCaptureDevice, spec s: DualSpec, wantAudio: Bool) throws {
+        guard let fmt = pickFormat(device, bound: s.bound, fps: s.fps, full: s.full, multi: false) else {
+            throw DualError.unsupported("这颗摄像头没有 \(s.label) 的规格")
+        }
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+        session.sessionPreset = .inputPriority
+        let input: AVCaptureDeviceInput
+        do { input = try AVCaptureDeviceInput(device: device) } catch { throw DualError.failed("无法打开摄像头：\(error.localizedDescription)") }
+        guard session.canAddInput(input) else { throw DualError.unsupported("系统不允许添加这颗摄像头") }
+        session.addInput(input)
+        try setFormat(device, fmt, fps: s.fps)
+        actualBackFps = s.fps; actualFrontFps = s.fps
+        backOut.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        backOut.alwaysDiscardsLateVideoFrames = true
+        guard session.canAddOutput(backOut) else { throw DualError.failed("无法添加视频输出") }
+        session.addOutput(backOut)
+        backOut.setSampleBufferDelegate(self, queue: dataQueue)
+        if let c = backOut.connection(with: .video) {
+            c.videoOrientation = .portrait
+            if c.isVideoMirroringSupported { c.automaticallyAdjustsVideoMirroring = false; c.isVideoMirrored = false }
+        }
+        if wantAudio, let mic = AVCaptureDevice.default(for: .audio), let micIn = try? AVCaptureDeviceInput(device: mic), session.canAddInput(micIn) {
+            session.addInput(micIn)
+            if session.canAddOutput(audioOut) {
+                session.addOutput(audioOut)
+                audioOut.setSampleBufferDelegate(self, queue: audioQueue)
+                hasAudio = true
+            }
+        }
+        sizeCanvas(dim: CMVideoFormatDescriptionGetDimensions(fmt.formatDescription), spec: s)
+        info = "\(singleFront ? "前置" : "后置") \(CMVideoFormatDescriptionGetDimensions(fmt.formatDescription).width)×\(CMVideoFormatDescriptionGetDimensions(fmt.formatDescription).height)@\(s.fps)"
     }
 
     private static func ultraWideWorksWithFront() -> Bool {
@@ -200,6 +279,10 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
 
     private func resetSession() {
+        if dual && !(session is AVCaptureMultiCamSession) {
+            if session.isRunning { session.stopRunning() }
+            session = AVCaptureMultiCamSession()
+        }
         session.beginConfiguration()
         for c in session.connections { session.removeConnection(c) }
         for o in session.outputs { session.removeOutput(o) }
@@ -211,10 +294,10 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     /// 在设备所有「支持同时工作」的规格里，挑最合适的一个。
     /// 片门全开偏好 4:3（整块传感器），否则偏好 16:9；长边不超过 bound；必须支持目标帧率。
-    private func pickFormat(_ d: AVCaptureDevice, bound: Int32, fps: Int, full: Bool) -> AVCaptureDevice.Format? {
+    private func pickFormat(_ d: AVCaptureDevice, bound: Int32, fps: Int, full: Bool, multi: Bool = true) -> AVCaptureDevice.Format? {
         var best: AVCaptureDevice.Format?
         var bestScore = -1
-        for f in d.formats where f.isMultiCamSupported {
+        for f in d.formats where !multi || f.isMultiCamSupported {
             let dim = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
             guard dim.width <= bound else { continue }
             guard f.videoSupportedFrameRateRanges.contains(where: { $0.maxFrameRate >= Double(fps) && $0.minFrameRate <= Double(fps) }) else { continue }
@@ -288,9 +371,14 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 if session.canAddConnection(ac) { session.addConnection(ac); hasAudio = true }
             }
         }
-        // 成品尺寸：在「后置规格竖过来」的画面里，取出和取景框同比例的最大矩形，长边不超过档位（720→1280，1080→1920，4K→3840）
+        sizeCanvas(dim: CMVideoFormatDescriptionGetDimensions(bf.formatDescription), spec: s)
         let dim = CMVideoFormatDescriptionGetDimensions(bf.formatDescription)
         let fdim = CMVideoFormatDescriptionGetDimensions(ff.formatDescription)
+        info = "后置 \(dim.width)×\(dim.height)@\(s.fps)  前置 \(fdim.width)×\(fdim.height)@\(ffps)"
+    }
+
+    /// 成品尺寸：在「摄像头规格竖过来」的画面里，取出和取景框同比例的最大矩形，长边不超过档位（720→1280，1080→1920，4K→3840）
+    private func sizeCanvas(dim: CMVideoDimensions, spec s: DualSpec) {
         let sw = CGFloat(dim.height), sh = CGFloat(dim.width)
         let asp = s.full ? CGFloat(dim.height) / CGFloat(dim.width) : max(0.4, min(1, s.aspect))
         var cw: CGFloat, ch: CGFloat
@@ -303,7 +391,6 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         let lk = min(1, 720 / max(canvas.width, canvas.height))
         liveSize = CGSize(width: ((canvas.width * lk) / 2).rounded() * 2, height: ((canvas.height * lk) / 2).rounded() * 2)
         pvPool = makePool(pvSize); livePool = makePool(liveSize)
-        info = "后置 \(dim.width)×\(dim.height)@\(s.fps)  前置 \(fdim.width)×\(fdim.height)@\(ffps)"
     }
 
     private func makePool(_ size: CGSize) -> CVPixelBufferPool? {
@@ -367,7 +454,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     /// 停掉会话 → 按新规格重配 → 重新开始。完成时回到主线程：
     /// (说明文字, 错误)。出错时已退回原来的规格。
-    func reconfigure(_ want: DualSpec, completion: @escaping (String, String?) -> Void) {
+    func reconfigure(_ want: DualSpec, revert: (() -> Void)? = nil, completion: @escaping (String, String?) -> Void) {
         sessionQueue.async {
             let old = self.spec
             if self.session.isRunning { self.session.stopRunning() }
@@ -384,6 +471,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 DispatchQueue.main.async { completion(note, nil) }
             } catch {
                 let msg = (error as? DualError)?.message ?? error.localizedDescription
+                revert?()          // 换模式（单摄 ⇄ 双摄）失败：先把模式改回去，再按原规格重配
                 _ = try? self.configure(old, wantAudio: self.wantAudioSaved)
                 self.session.startRunning()
                 DispatchQueue.main.async { completion("", msg) }
@@ -656,8 +744,10 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 out = ring.map { $0.transformed(by: place).composited(over: blended) } ?? blended
             }
         } else {
-            var one = fill(bk, CGRect(x: 0, y: 0, width: W, height: H), H, mirror: false)
-            if !gradeBack.isNeutral { one = gradeBack.apply(one) }
+            let isFront = !dual && !L.backIsMain
+            var one = fill(bk, CGRect(x: 0, y: 0, width: W, height: H), H, mirror: isFront && L.mirrorFront)
+            let g1 = isFront ? gradeFront : gradeBack
+            if !g1.isNeutral { one = g1.apply(one) }
             out = one.composited(over: bg)
         }
         return out.cropped(to: CGRect(origin: .zero, size: size))

@@ -51,6 +51,11 @@ final class DualPalettePanel: UIView {
     private func edit(_ f: (GradeState) -> Void) { targets.forEach(f); onChange?() }
 
     /// 外部（切预设、重置）改了参数后同步界面
+    /// 单摄时不分「后置 / 前置 / 同时」：直接调当前这颗摄像头的画面
+    func setSingle(_ single: Bool, front: Bool) {
+        targetSeg.isHidden = single
+        st.gradeTarget = single ? (front ? 1 : 0) : 2
+    }
     func syncFromState() { rebuild() }
 
     // MARK: 构件

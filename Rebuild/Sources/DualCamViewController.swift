@@ -77,7 +77,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         super.viewDidLoad()
         view.backgroundColor = .black
         mode = startMode
-        engine.layout.backIsMain = st.backIsMain
+        engine.dual = st.dualOn && DualCamEngine.isSupported
+        engine.layout.backIsMain = engine.dual ? st.backIsMain : !st.singleFront
         engine.layout.mirrorFront = st.mirror
         engine.layout.border = st.border
         engine.layout.style = st.pipStyleSplit ? .split : .pip
@@ -93,7 +94,16 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             let spec = self.currentSpec()
             self.engine.sessionQueue.async {
                 do {
-                    let note = try self.engine.configure(spec, wantAudio: audioOK)
+                    var note = ""
+                    do { note = try self.engine.configure(spec, wantAudio: audioOK) }
+                    catch let e as DualError where self.engine.dual {
+                        // 上次开着双摄、这次开不了：退回单摄，并告诉用户为什么
+                        self.engine.dual = false
+                        var l = self.engine.layout; l.backIsMain = !self.st.singleFront; self.engine.layout = l
+                        DispatchQueue.main.async { self.st.dualOn = false }
+                        note = try self.engine.configure(spec, wantAudio: audioOK)
+                        note = "双摄不可使用（\(e.message)），已退回单摄。" + note
+                    }
                     DispatchQueue.main.async {
                         self.afterConfigured(note)
                         self.engine.fullRate = self.st.fullRate
@@ -108,9 +118,9 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             }
         }
         let nc = NotificationCenter.default
-        nc.addObserver(self, selector: #selector(runtimeError(_:)), name: .AVCaptureSessionRuntimeError, object: engine.session)
-        nc.addObserver(self, selector: #selector(interrupted(_:)), name: .AVCaptureSessionWasInterrupted, object: engine.session)
-        nc.addObserver(self, selector: #selector(interruptionEnded(_:)), name: .AVCaptureSessionInterruptionEnded, object: engine.session)
+        nc.addObserver(self, selector: #selector(runtimeError(_:)), name: .AVCaptureSessionRuntimeError, object: nil)
+        nc.addObserver(self, selector: #selector(interrupted(_:)), name: .AVCaptureSessionWasInterrupted, object: nil)
+        nc.addObserver(self, selector: #selector(interruptionEnded(_:)), name: .AVCaptureSessionInterruptionEnded, object: nil)
     }
     deinit { NotificationCenter.default.removeObserver(self) }
 
@@ -363,6 +373,9 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         btnTorch.active = torchOn; btnMirror.active = st.mirror
         btnLayout.setSymbol(engine.layout.style == .pip ? "rectangle.split.1x2" : "pip", size: 34)
         btnShape.isEnabled = engine.layout.style == .pip; btnShape.alpha = btnShape.isEnabled ? 1 : 0.4
+        // 单摄时没有布局 / 小窗形状可调；前置单摄没有手电筒
+        btnLayout.isHidden = !engine.dual; btnShape.isHidden = !engine.dual
+        btnTorch.isEnabled = !(!engine.dual && !mainIsBack); btnTorch.alpha = btnTorch.isEnabled ? 1 : 0.4
     }
     private func syncTabs() {
         tabPhoto.setTitleColor(mode == .photo ? yellow : UIColor(white: 1, alpha: 0.75), for: .normal)
@@ -400,8 +413,47 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
     @objc private func swapMain() {
         focusBox.hide(); engine.resetFocus(back: focusBack)
+        if !engine.dual {
+            // 单摄：翻转 = 前后摄像头切换（要重配会话）
+            guard ready, !engine.isRecording, !reconfiguring else { return }
+            if torchOn { torchOn = false; engine.setTorch(false) }
+            var l = engine.layout; l.backIsMain.toggle(); engine.layout = l; st.singleFront = !l.backIsMain
+            wantUW = false
+            applySpec(); return
+        }
         var l = engine.layout; l.backIsMain.toggle(); engine.layout = l; st.backIsMain = l.backIsMain
         syncZoomRange(resetTo: nil)
+    }
+
+    /// 双摄开关（多功能面板里）。开不了就退回单摄并说明原因。完成回调：最终的开关状态
+    func setDual(_ on: Bool, _ done: @escaping (Bool, String?) -> Void) {
+        guard ready, !engine.isRecording, !reconfiguring else { done(engine.dual, "正在拍摄 / 切换中，稍后再试"); return }
+        if on && !DualCamEngine.isSupported { st.dualOn = false; done(false, "这台设备不支持前后摄像头同时工作，双摄不可使用"); return }
+        let oldDual = engine.dual, oldBackMain = engine.layout.backIsMain
+        engine.dual = on
+        var l = engine.layout; l.backIsMain = on ? st.backIsMain : !st.singleFront; engine.layout = l
+        if torchOn { torchOn = false; engine.setTorch(false) }
+        wantUW = false
+        reconfiguring = true; spinner.startAnimating()
+        engine.reconfigure(currentSpec(), revert: { [weak self] in
+            guard let self = self else { return }
+            self.engine.dual = oldDual
+            var l2 = self.engine.layout; l2.backIsMain = oldBackMain; self.engine.layout = l2
+        }) { [weak self] note, err in
+            guard let self = self else { return }
+            self.reconfiguring = false; self.spinner.stopAnimating()
+            if let e = err {
+                self.st.dualOn = oldDual
+                done(oldDual, "双摄不可使用：\(e)")
+            } else {
+                self.st.dualOn = on
+                done(on, note.isEmpty ? nil : note)
+            }
+            self.wantUW = self.engine.spec.ultraWide
+            self.syncZoomRange(resetTo: nil); self.syncSpecPill(); self.syncButtons()
+            self.view.setNeedsLayout()
+            self.engine.liveEnabled = self.st.liveOn && self.mode == .photo
+        }
     }
     /// 要的是哪个状态（按「最后一次点的意思」切换，不看动画走到哪一步；否则收起动画途中再点一下会变成「再收一次」，像是打不开）
     private var specWanted = false
@@ -474,7 +526,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             if let e = err { self.say("切换失败：\(e)", 4); self.wantUW = self.engine.spec.ultraWide }
             else if !note.isEmpty { self.say(note, 4.5) }
             self.wantUW = self.engine.spec.ultraWide
-            if let z = keepZoom, err == nil { self.engine.setZoom(back: true, z); self.syncZoomRange(resetTo: z) }
+            if let z = keepZoom, err == nil { self.engine.setZoom(back: self.mainIsBack, z); self.syncZoomRange(resetTo: z) }
             else { self.syncZoomRange(resetTo: nil) }
             self.syncSpecPill()
             self.specSegs[0].select([720, 1080, 2160].firstIndex(of: self.st.res) ?? 1)
@@ -508,6 +560,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         setSpecPanel(false)
         let v = FunctionsViewController()
         v.onOpenSettings = { [weak self] in self?.openSettings() }
+        v.dualOn = engine.dual
+        v.onToggleDual = { [weak self] on, done in self?.setDual(on, done) }
         v.modalPresentationStyle = .pageSheet
         present(v, animated: true)
     }
@@ -528,7 +582,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         timerTop.constant = on ? 44 : 10
         UIView.animate(withDuration: 0.2) { self.stage.layoutIfNeeded() }
         if on { focusBox.hide() }
-        if on { palette.syncFromState(); paletteChanged() }
+        if on { palette.setSingle(!engine.dual, front: !mainIsBack); palette.syncFromState(); paletteChanged() }
         syncButtons()
     }
     /// 正在显示 / 修改的那套调色（前置选「前置」，其余显示后置的）
@@ -567,13 +621,13 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     // MARK: - 小窗：拖动 / 点按互换
 
     private func pipRect() -> CGRect {
-        let L = engine.layout; guard L.style == .pip else { return .zero }
+        let L = engine.layout; guard engine.dual, L.style == .pip else { return .zero }
         return L.rects(stage.bounds.width, stage.bounds.height).second
     }
     /// 主画面占取景框的哪一块（画中画 = 整个取景框；上下分屏 = 上半）
-    private func mainRect() -> CGRect { engine.layout.rects(stage.bounds.width, stage.bounds.height).main }
+    private func mainRect() -> CGRect { if !engine.dual { return stage.bounds }; return engine.layout.rects(stage.bounds.width, stage.bounds.height).main }
 
-    private func inPip(_ p: CGPoint) -> Bool { engine.layout.style == .pip && pipRect().insetBy(dx: -10, dy: -10).contains(p) }
+    private func inPip(_ p: CGPoint) -> Bool { engine.dual && engine.layout.style == .pip && pipRect().insetBy(dx: -10, dy: -10).contains(p) }
 
     /// 拖动：落在小窗上 = 移动小窗；已经有对焦框时 = 上下拖动调曝光
     @objc private func panStage(_ g: UIPanGestureRecognizer) {
@@ -611,7 +665,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     @objc private func tapStage(_ g: UITapGestureRecognizer) {
         setSpecPanel(false)
         let p = g.location(in: stage)
-        if engine.layout.style == .pip && pipRect().contains(p) { swapMain(); return }
+        if engine.dual && engine.layout.style == .pip && pipRect().contains(p) { swapMain(); return }
         guard !paletteOpen else { return }
         focusAt(p, lock: false)
     }
@@ -619,7 +673,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     /// 双击小窗：放大 / 缩小
     @objc private func doubleTapStage(_ g: UITapGestureRecognizer) {
         let p = g.location(in: stage)
-        guard engine.layout.style == .pip, pipRect().contains(p) else { return }
+        guard engine.dual, engine.layout.style == .pip, pipRect().contains(p) else { return }
         var l = engine.layout
         l.pipW = l.pipW > 0.4 ? 0.32 : 0.55
         engine.layout = l
