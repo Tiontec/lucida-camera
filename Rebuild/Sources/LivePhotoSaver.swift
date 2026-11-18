@@ -20,7 +20,7 @@ enum LivePhotoSaver {
         }
         let pn = (body["photoName"] as? String) ?? "photo.jpg"
         let vn = (body["videoName"] as? String) ?? "video.mov"
-        let dir = SchemeHandler.outDir
+        let dir = AppDirs.outDir
         let tag = UUID().uuidString
         let pu = dir.appendingPathComponent(tag + "-" + pn.replacingOccurrences(of: "/", with: "_"))
         let vu = dir.appendingPathComponent(tag + "-" + vn.replacingOccurrences(of: "/", with: "_"))
@@ -36,9 +36,24 @@ enum LivePhotoSaver {
     }
 
     /// 同上，并且把新资源在系统相册里的 localIdentifier 交回来
+    /// 连拍时可能同时有十几张要存：全部排进同一条队列，一次只处理一张（以前同时处理，十几张 4K 照片同时重新编码，内存撑爆就闪退）
+    private static let saveQ = DispatchQueue(label: "lucida.livesave", qos: .utility)
     static func saveWithID(photo: URL, video: URL, duration: Double, still stillSec: Double? = nil, completion: @escaping (Bool, String?, String?) -> Void) {
+        saveQ.async {
+            let sem = DispatchSemaphore(value: 0)
+            autoreleasepool {
+                saveNow(photo: photo, video: video, duration: duration, still: stillSec) { ok, msg, id in
+                    DispatchQueue.main.async { completion(ok, msg, id) }
+                    sem.signal()
+                }
+            }
+            _ = sem.wait(timeout: .now() + 60)
+        }
+    }
+
+    private static func saveNow(photo: URL, video: URL, duration: Double, still stillSec: Double? = nil, completion: @escaping (Bool, String?, String?) -> Void) {
         let id = UUID().uuidString
-        let dir = SchemeHandler.outDir
+        let dir = AppDirs.outDir
         guard let photoOut = tagPhoto(photo, identifier: id, into: dir) else { completion(false, "照片写入标识失败", nil); return }
         let movOut = dir.appendingPathComponent(UUID().uuidString + ".mov")
         // 静帧 = 按下快门的那一刻（网页算好的）；没有就取视频中间

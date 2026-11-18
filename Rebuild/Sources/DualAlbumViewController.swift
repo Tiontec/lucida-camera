@@ -54,7 +54,7 @@ final class DualAlbumViewController: UIViewController, UICollectionViewDataSourc
         let back = DualCircleButton(symbol: "chevron.down", size: 38); back.setGlass(DualSettings.shared.glass)
         back.addTarget(self, action: #selector(close), for: .touchUpInside)
         titleLabel.textColor = .white; titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
-        importBtn.setTitle("导入", for: .normal); importBtn.tintColor = dualYellow
+        importBtn.setTitle("导入", for: .normal); importBtn.tintColor = dualYellow; importBtn.isHidden = true
         importBtn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
         importBtn.addTarget(self, action: #selector(doImport), for: .touchUpInside)
         selectBtn.setTitle("选择", for: .normal); selectBtn.tintColor = .white

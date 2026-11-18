@@ -17,6 +17,9 @@ final class LiveEncoder {
     private let lock = NSLock()
     private var samples: [Sample] = []
     private var holds: [UUID: CMTime] = [:]       // 每张还没收完的实况登记它要用到的最早时间点，库里不能清掉
+    private var inCount = 0, outCount = 0, lastErr: OSStatus = 0
+    /// 诊断：送进 / 吐出多少帧、最近一次错误码
+    var diag: String { lock.lock(); defer { lock.unlock() }; return "送入\(inCount) 输出\(outCount) 库存\(samples.count) 错误\(lastErr)" }
     private var forceKey = true                    // 下一帧要求是关键帧（刚开始 / 画面中断过之后）
 
     init?(size: CGSize) {
@@ -45,11 +48,14 @@ final class LiveEncoder {
         let props: CFDictionary? = forceKey ? ([kVTEncodeFrameOptionKey_ForceKeyFrame as String: NSNumber(value: true)] as CFDictionary) : nil
         forceKey = false
         var flags = VTEncodeInfoFlags()
-        _ = VTCompressionSessionEncodeFrame(sess, imageBuffer: pb, presentationTimeStamp: pts, duration: CMTime(value: 1, timescale: 30),
+        lock.lock(); inCount += 1; lock.unlock()
+        let es = VTCompressionSessionEncodeFrame(sess, imageBuffer: pb, presentationTimeStamp: pts, duration: CMTime(value: 1, timescale: 30),
                                             frameProperties: props, infoFlagsOut: &flags) { [weak self] status, _, sb in
-            guard status == noErr, let sb = sb, let self = self else { return }
+            guard let self = self else { return }
+            guard status == noErr, let sb = sb else { if status != noErr { self.lock.lock(); self.lastErr = status; self.lock.unlock() }; return }
             self.append(sb)
         }
+        if es != noErr { lock.lock(); lastErr = es; lock.unlock() }
     }
 
     private func append(_ sb: CMSampleBuffer) {
@@ -62,6 +68,7 @@ final class LiveEncoder {
             }
         }
         lock.lock()
+        outCount += 1
         samples.append(Sample(sb: sb, pts: pts, key: key))
         trimLocked()
         lock.unlock()

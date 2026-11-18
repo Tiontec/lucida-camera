@@ -40,6 +40,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private let specBack = DualBackdrop(radius: 20)
     private var roundBtns: [DualCircleButton] = []
     private var btnBack: DualCircleButton!, btnLive: DualCircleButton!, btnPalette: DualCircleButton!, btnSettings: DualCircleButton!
+    private var btnMore: DualCircleButton!
     private var btnLayout: DualCircleButton!, btnShape: DualCircleButton!, btnMirror: DualCircleButton!, btnTorch: DualCircleButton!, btnSwap: DualCircleButton!
     private let palette = DualPalettePanel()
     private let readout = UILabel(), presetLabel = UILabel()
@@ -197,6 +198,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         btnSettings = rb("gearshape.fill", 40, #selector(openSettings))
         specPill.addTarget(self, action: #selector(toggleSpecPanel), for: .touchUpInside)
         let right = UIStackView(arrangedSubviews: [btnLive, btnPalette, btnSettings]); right.spacing = 8
+        btnBack.isHidden = true            // 重构版没有上一级，相机就是主界面
         let left = UIStackView(arrangedSubviews: [btnBack, specPill]); left.spacing = 8; left.alignment = .center
         for s in [left, right] {
             s.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(s)
@@ -251,7 +253,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         btnMirror = rb("arrow.left.and.right.righttriangle.left.righttriangle.right", 34, #selector(toggleMirror))
         btnTorch = rb("bolt.fill", 34, #selector(toggleTorch))
         btnSwap = rb("arrow.triangle.2.circlepath", 46, #selector(swapMain))
-        for b in [btnLayout!, btnShape!, btnMirror!, btnTorch!, btnSwap!] { bottomBar.addSubview(b); b.translatesAutoresizingMaskIntoConstraints = true }
+        btnMore = rb("square.grid.2x2.fill", 46, #selector(openMore))
+        for b in [btnLayout!, btnShape!, btnMirror!, btnTorch!, btnSwap!, btnMore!] { bottomBar.addSubview(b); b.translatesAutoresizingMaskIntoConstraints = true }
         for (b, t) in [(tabVideo, "视频"), (tabPhoto, "照片")] {
             b.setTitle(t, for: .normal); b.titleLabel?.font = .systemFont(ofSize: 15, weight: .bold)
             b.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside); bottomBar.addSubview(b)
@@ -292,6 +295,9 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         shutter.layer.cornerRadius = engine.isRecording ? 8 : shutter.bounds.width / 2
         thumb.frame = CGRect(x: 26, y: cy - 27, width: 54, height: 54)
         btnSwap.frame = CGRect(x: W - 26 - 46, y: cy - 23, width: 46, height: 46)
+        // 多功能按键：快门和翻转按钮之间
+        let mid = (W / 2 + 38 + btnSwap.frame.minX) / 2
+        btnMore.frame = CGRect(x: mid - 23, y: cy - 23, width: 46, height: 46)
     }
 
     private func buildSpecPanel() {
@@ -498,9 +504,16 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         present(v, animated: true)
     }
 
+    @objc private func openMore() {
+        setSpecPanel(false)
+        let v = FunctionsViewController()
+        v.onOpenSettings = { [weak self] in self?.openSettings() }
+        v.modalPresentationStyle = .pageSheet
+        present(v, animated: true)
+    }
+
     @objc private func openAlbum() {
         let a = DualAlbumViewController(); a.items = items
-        a.onImport = { [weak self] in self?.closeTapped() }
         a.onClose = { [weak self] in self?.refreshThumb() }
         a.modalPresentationStyle = .fullScreen
         present(a, animated: true)
@@ -648,7 +661,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     private func newFile(_ ext: String) -> URL {
         let f = DateFormatter(); f.dateFormat = "yyyyMMdd_HHmmss"
-        return SchemeHandler.outDir.appendingPathComponent("澄影双摄_\(f.string(from: Date()))_\(Int.random(in: 100...999)).\(ext)")
+        return AppDirs.outDir.appendingPathComponent("澄影双摄_\(f.string(from: Date()))_\(Int.random(in: 100...999)).\(ext)")
     }
 
     private func takePhoto() {
@@ -870,6 +883,15 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     private func finish(code: String?, msg: String?) {
         guard !finished else { return }
+        if let code = code {
+            // 重构版：没有上一级可退，直接告诉用户原因
+            spinner.stopAnimating()
+            let a = UIAlertController(title: code == "denied" ? "没有相机权限" : "无法打开相机", message: code == "denied" ? "请到 设置 → 澄影重构版 → 相机 里打开权限。" : msg, preferredStyle: .alert)
+            if code == "denied" { a.addAction(UIAlertAction(title: "去设置", style: .default) { _ in if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }) }
+            a.addAction(UIAlertAction(title: "好", style: .cancel))
+            present(a, animated: true)
+            return
+        }
         if saving > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.finish(code: code, msg: msg) }; return }
         finished = true
         if torchOn { engine.setTorch(false) }

@@ -1,8 +1,6 @@
 import UIKit
 
-/// 澄影 · iOS 原生外壳。
-/// 网页（Resources/web/index.html）负责全部界面与调色算法；本工程负责：
-/// 系统相册写入、实况照片、原生拍摄（HEIF / ProRAW）、摄像头检测、原生液态玻璃叠层。
+/// 澄影重构版 · iOS。没有网页：打开就是原生相机（双摄系统提取而来），所有功能和设置都是原生界面。
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
@@ -12,7 +10,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         let w = UIWindow(frame: UIScreen.main.bounds)
         w.backgroundColor = .black
         w.overrideUserInterfaceStyle = .dark
-        w.rootViewController = WebViewController()
+        w.rootViewController = DualCamViewController()
         w.makeKeyAndVisible()
         window = w
         application.isIdleTimerDisabled = true      // 取景时不自动锁屏
@@ -20,7 +18,5 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication,
-                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
-    }
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { .portrait }
 }

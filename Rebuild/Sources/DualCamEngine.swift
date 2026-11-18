@@ -670,6 +670,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         dataQueue.async {
             self.lock.lock(); let b = self.lastBack, f = self.lastFront; self.lock.unlock()
             guard let back = b else { completion(false, "还没有画面"); return }
+            autoreleasepool {
             let img = self.compose(back: back, front: f, size: self.canvas)
             do {
                 if heif {
@@ -681,6 +682,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 }
                 completion(true, nil)
             } catch { completion(false, error.localizedDescription) }
+            self.ci.clearCaches()                    // 连拍时 4K 调色的中间结果别越攒越多
+            }
         }
     }
 
@@ -817,8 +820,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             j.enc.finish(until: j.end)
             let clip = j.enc.clip(from: j.start, until: j.end)
             j.enc.release(j.id)
-            guard let first = clip.first else { j.done(nil, 0, "实况缓存里没有画面"); return }
-            let url = SchemeHandler.outDir.appendingPathComponent("澄影双摄_实况_\(UUID().uuidString).mov")
+            guard let first = clip.first else { j.done(nil, 0, "实况缓存里没有画面（\(j.enc.diag)）"); return }
+            let url = AppDirs.outDir.appendingPathComponent("澄影双摄_实况_\(UUID().uuidString).mov")
             if let e = LiveEncoder.writeMOV(clip, to: url) {
                 try? FileManager.default.removeItem(at: url)
                 j.done(nil, 0, e)

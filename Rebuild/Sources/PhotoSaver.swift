@@ -45,7 +45,7 @@ enum PhotoSaver {
     /// JPEG / PNG → HEIC（保留 EXIF / 方向）
     static func transcodeToHEIC(_ src: URL, quality: CGFloat = 0.9) -> URL? {
         guard let s = CGImageSourceCreateWithURL(src as CFURL, nil) else { return nil }
-        let out = SchemeHandler.outDir.appendingPathComponent(UUID().uuidString + ".heic")
+        let out = AppDirs.outDir.appendingPathComponent(UUID().uuidString + ".heic")
         guard let d = CGImageDestinationCreateWithURL(out as CFURL, "public.heic" as CFString, 1, nil) else { return nil }
         var props = (CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any]) ?? [:]
         props[kCGImageDestinationLossyCompressionQuality] = quality
@@ -56,7 +56,7 @@ enum PhotoSaver {
     /// 任意图片数据 → JPEG 文件（给网页相册预览 / 编辑用）
     static func jpegFile(from data: Data, quality: CGFloat = 0.92) -> URL? {
         guard let s = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        let out = SchemeHandler.outDir.appendingPathComponent(UUID().uuidString + ".jpg")
+        let out = AppDirs.outDir.appendingPathComponent(UUID().uuidString + ".jpg")
         guard let d = CGImageDestinationCreateWithURL(out as CFURL, "public.jpeg" as CFString, 1, nil) else { return nil }
         var props = (CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any]) ?? [:]
         props[kCGImageDestinationLossyCompressionQuality] = quality
