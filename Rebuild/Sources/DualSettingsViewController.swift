@@ -49,6 +49,8 @@ final class DualSettingsViewController: UIViewController {
             self?.st.fullSensor = v; self?.onChange?(true) }
         addSwitch("满帧画面运行录制", "开：不因手机发烫自动降帧，取景和录制都按所选帧率；关：发烫时自动降到 30 帧、60 帧取景隔帧刷新，降低功耗，保证录完的视频流畅", st.fullRate) { [weak self] v in
             self?.st.fullRate = v; self?.onChange?(false) }
+        let pf: [Int] = [30, 60, 120]
+        addSeg("小窗滑动帧率", pf.map { "\($0) 帧" }, pf.firstIndex(of: st.pipDragFps) ?? 1) { [st] i in st.pipDragFps = pf[i] }
         let bs: [PipBorder] = [.none, .white, .black]
         addSeg("小窗边框", ["无", "白色", "黑色"], bs.firstIndex(of: st.border) ?? 0) { [st] i in st.border = bs[i] }
         addSwitch("前置画面镜像", nil, st.mirror) { [st] v in st.mirror = v }
@@ -60,7 +62,7 @@ final class DualSettingsViewController: UIViewController {
             self?.present(v, animated: true)
         }
         let note = UILabel(); note.numberOfLines = 0; note.textColor = UIColor(white: 1, alpha: 0.45); note.font = .systemFont(ofSize: 12)
-        note.text = "说明：同时开前后摄像头时，系统不提供 ProRAW；实况照片没有声音。"
+        note.text = "说明：同时开前后摄像头时，系统不提供 ProRAW。小窗滑动帧率 120 需要支持 120Hz 的屏幕；录下来的视频帧率以「帧率」档位为准。"
         stack.addArrangedSubview(note)
     }
 

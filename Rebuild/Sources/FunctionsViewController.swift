@@ -1,7 +1,7 @@
 import UIKit
 
 /// 多功能面板（相机底部快门旁的按键）：以后新增的功能开关、入口都放在这里。
-/// 1.1.0：双摄开关 / 更多设置 / 调色盘预设顺序 / 关于。
+/// 1.2.0（沿用 1.1.0 界面）：双摄开关 / 更多设置 / 调色盘预设顺序 / 关于。
 final class FunctionsViewController: UIViewController {
     var onOpenSettings: (() -> Void)?
     /// 双摄开关：当前状态 / 请求切换（回调：最终状态，提示文字）

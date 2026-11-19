@@ -66,6 +66,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     let sessionQueue = DispatchQueue(label: "lucida.dual.session")
     private let dataQueue = DispatchQueue(label: "lucida.dual.data", qos: .userInitiated)
     private let audioQueue = DispatchQueue(label: "lucida.dual.audio", qos: .userInitiated)
+    /// 前置画面单独一条队列：后置那条队列在「合成 + 调色」时会被占住，前置帧排不上队就被系统当成迟到丢掉，小窗里的前置画面就卡
+    private let frontQueue = DispatchQueue(label: "lucida.dual.front", qos: .userInitiated)
     private let writeQueue = DispatchQueue(label: "lucida.dual.write", qos: .utility)
 
     /// 预览显示层（界面把它放进取景区）
@@ -116,6 +118,12 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private var livePool: CVPixelBufferPool?
     private var pvFrameN = 0
     private var previewN = 0
+    // 小窗拖动：按设置的帧率（60 / 120）重画取景
+    private var dragOn = false, dragBusy = false           // lock 保护
+    private var dragBase: CVPixelBuffer?                     // 主画面（已调色、不含小窗），每来一帧新画面算一次，拖动中的每次重画都复用它
+    private var dragBaseN = -1, dragBaseF = -1
+    private var lastPvPTS = CMTime.zero
+    private var lastPvTime: CFTimeInterval = 0
     private var frontSeq = 0, pvFrontSeq = 0     // 前置来了第几帧 / 取景已经画到第几帧（前置帧率比后置低时，取景跟着前置帧走，小窗才不会一顿一顿）
     private var actualFrontFps = 30
 
@@ -351,7 +359,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             out.alwaysDiscardsLateVideoFrames = true
             guard session.canAddOutput(out) else { throw DualError.failed("无法添加视频输出") }
             session.addOutputWithNoConnections(out)
-            out.setSampleBufferDelegate(self, queue: dataQueue)
+            out.setSampleBufferDelegate(self, queue: out === frontOut ? frontQueue : dataQueue)
             let c = AVCaptureConnection(inputPorts: [port], output: out)
             guard session.canAddConnection(c) else { throw DualError.failed("无法连接视频输出") }
             session.addConnection(c)
@@ -643,9 +651,58 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     @discardableResult
     private func renderPreview(back: CVPixelBuffer, front: CVPixelBuffer?, pts: CMTime) -> CVPixelBuffer? {
         guard let pool = pvPool else { return nil }
+        lock.lock(); let dragging = dragOn; lock.unlock()
+        if dragging, dual, layout.style == .pip, let f = front { return renderPreviewDrag(back: back, front: f, pts: pts) }
         var out: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let dst = out else { return nil }
         let img = compose(back: back, front: front, size: pvSize)
+        ci.render(img, to: dst, bounds: CGRect(origin: .zero, size: pvSize), colorSpace: rgb)
+        display(dst, pts: pts)
+        return dst
+    }
+
+    // MARK: - 小窗拖动高帧率重绘
+
+    /// 界面开始 / 结束拖小窗时调用。拖动期间界面用 CADisplayLink 按 60 / 120 的节拍调 redrawForDrag()
+    func setPipDragging(_ on: Bool) {
+        lock.lock(); dragOn = on; lock.unlock()
+        if !on { dataQueue.async { [weak self] in self?.dragBase = nil } }
+    }
+
+    /// 显示器节拍来一次：用最新一帧摄像头画面 + 最新的小窗位置重画一次取景。
+    /// minGap：离上一次取景刷新不到这么久就不画（摄像头刚送来新画面时已经画过了）。上一次还没画完也直接跳过，不会堆积。
+    func redrawForDrag(minGap: Double) {
+        lock.lock()
+        if !dragOn || dragBusy { lock.unlock(); return }
+        dragBusy = true
+        lock.unlock()
+        dataQueue.async { [weak self] in
+            guard let self = self else { return }
+            defer { self.lock.lock(); self.dragBusy = false; self.lock.unlock() }
+            guard CACurrentMediaTime() - self.lastPvTime >= minGap else { return }
+            self.lock.lock(); let b = self.lastBack, f = self.lastFront; self.lock.unlock()
+            guard let back = b, let front = f, self.dual, self.layout.style == .pip else { return }
+            self.renderPreviewDrag(back: back, front: front, pts: self.lastPvPTS)
+        }
+    }
+
+    /// 拖动中的取景：主画面（含调色）每来一帧新画面只算一次存进 dragBase，之后每次重画只是「底图 + 小窗」，开销很小
+    @discardableResult
+    private func renderPreviewDrag(back: CVPixelBuffer, front: CVPixelBuffer, pts: CMTime) -> CVPixelBuffer? {
+        guard let pool = pvPool else { return nil }
+        lock.lock(); let fs = frontSeq; lock.unlock()
+        let okSize = dragBase.map { CVPixelBufferGetWidth($0) == Int(pvSize.width) && CVPixelBufferGetHeight($0) == Int(pvSize.height) } ?? false
+        if !okSize || dragBaseN != previewN || dragBaseF != fs {
+            var bo: CVPixelBuffer?
+            guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &bo) == kCVReturnSuccess, let nb = bo else { return nil }
+            let m = composeMain(back: back, front: front, size: pvSize)
+            ci.render(m, to: nb, bounds: CGRect(origin: .zero, size: pvSize), colorSpace: rgb)
+            dragBase = nb; dragBaseN = previewN; dragBaseF = fs
+        }
+        guard let base = dragBase else { return nil }
+        var out: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let dst = out else { return nil }
+        let img = compose(back: back, front: front, size: pvSize, base: CIImage(cvPixelBuffer: base))
         ci.render(img, to: dst, bounds: CGRect(origin: .zero, size: pvSize), colorSpace: rgb)
         display(dst, pts: pts)
         return dst
@@ -660,6 +717,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         var sb: CMSampleBuffer?
         CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: dst, formatDescription: fmt, sampleTiming: &timing, sampleBufferOut: &sb)
         guard let sample = sb else { return }
+        lastPvTime = CACurrentMediaTime(); if pts.isValid { lastPvPTS = pts }
         if let arr = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true), CFArrayGetCount(arr) > 0 {
             let dict = unsafeBitCast(CFArrayGetValueAtIndex(arr, 0), to: CFMutableDictionary.self)
             CFDictionarySetValue(dict, Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
@@ -716,7 +774,21 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         return moved.cropped(to: CGRect(x: r.minX, y: H - r.maxY, width: r.width, height: r.height))
     }
 
-    func compose(back: CVPixelBuffer, front: CVPixelBuffer?, size: CGSize) -> CIImage {
+    /// 画中画的「主画面层」：主摄像头画面铺满 + 调色（不含小窗）。拖动小窗时每帧只算一次，拿去当底图
+    func composeMain(back: CVPixelBuffer, front: CVPixelBuffer, size: CGSize) -> CIImage {
+        let L = layout, W = size.width, H = size.height
+        let (mr, _) = L.rects(W, H)
+        let mainIsBack = L.backIsMain
+        let mainImg = CIImage(cvPixelBuffer: mainIsBack ? back : front)
+        let g = mainIsBack ? gradeBack : gradeFront
+        var m = fill(mainImg, mr, H, mirror: !mainIsBack && L.mirrorFront)
+        if !g.isNeutral { m = g.apply(m) }
+        let bg = CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: size))
+        return m.composited(over: bg).cropped(to: CGRect(origin: .zero, size: size))
+    }
+
+    /// base：已经算好的主画面层（只在画中画时用）；不给就从头算
+    func compose(back: CVPixelBuffer, front: CVPixelBuffer?, size: CGSize, base: CIImage? = nil) -> CIImage {
         let L = layout, W = size.width, H = size.height
         let bk = CIImage(cvPixelBuffer: back)
         let ft = front.map { CIImage(cvPixelBuffer: $0) }
@@ -728,9 +800,13 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             let mainImg = mainIsBack ? bk : f, secImg = mainIsBack ? f : bk
             let mainMirror = !mainIsBack && L.mirrorFront, secMirror = mainIsBack && L.mirrorFront
             let gMain = mainIsBack ? gradeBack : gradeFront, gSec = mainIsBack ? gradeFront : gradeBack
-            var mainF = fill(mainImg, mr, H, mirror: mainMirror)
-            if !gMain.isNeutral { mainF = gMain.apply(mainF) }
-            out = mainF.composited(over: bg)
+            if let b = base, L.style == .pip {
+                out = b
+            } else {
+                var mainF = fill(mainImg, mr, H, mirror: mainMirror)
+                if !gMain.isNeutral { mainF = gMain.apply(mainF) }
+                out = mainF.composited(over: bg)
+            }
             var sec = fill(secImg, sr, H, mirror: secMirror)
             if !gSec.isNeutral { sec = gSec.apply(sec) }
             switch L.style {
@@ -844,6 +920,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
 
     private func appendAudio(_ sb: CMSampleBuffer) {
+        // 实况：把麦克风声音也留一份（实况打开时才留；放到数据线程上，和视频样本保持同一个顺序）
+        if liveEnabled { dataQueue.async { [weak self] in self?.liveEnc?.appendAudio(sb) } }
         guard isRecording, started, let ai = aIn, ai.isReadyForMoreMediaData else { return }
         if CMSampleBufferGetPresentationTimeStamp(sb) < startPTS { return }
         ai.append(sb)
@@ -909,12 +987,13 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         writeQueue.async {
             j.enc.finish(until: j.end)
             let clip = j.enc.clip(from: j.start, until: j.end)
+            let aclip = j.enc.audioClip(from: clip.first?.pts ?? j.start, until: j.end)
             j.enc.release(j.id)
-            guard let first = clip.first else { j.done(nil, 0, "实况缓存里没有画面（\(j.enc.diag)）"); return }
+            guard let first = clip.first else { AppLog.error("实况", "实况缓存里没有画面（\(j.enc.diag)）"); j.done(nil, 0, "实况缓存里没有画面（\(j.enc.diag)）"); return }
             let url = AppDirs.outDir.appendingPathComponent("澄影双摄_实况_\(UUID().uuidString).mov")
-            if let e = LiveEncoder.writeMOV(clip, to: url) {
+            if let e = LiveEncoder.writeMOV(clip, audio: aclip, to: url) {
                 try? FileManager.default.removeItem(at: url)
-                j.done(nil, 0, e)
+                AppLog.error("实况", "实况合成失败：\(e)（\(j.enc.diag)）"); j.done(nil, 0, e)
             } else {
                 j.done(url, max(0, CMTimeGetSeconds(CMTimeSubtract(j.shutter, first.pts))), nil)
             }

@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "1.2.0"
+    CURRENT_PROJECT_VERSION: "3"
     DEVELOPMENT_TEAM: ""
     ENABLE_BITCODE: NO
 targets:
@@ -48,6 +48,7 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIUserInterfaceStyle: Dark
         UIFileSharingEnabled: false
+        CADisableMinimumFrameDurationOnPhone: true
         NSCameraUsageDescription: 澄影重构版需要使用相机来取景、拍照和录像。
         NSMicrophoneUsageDescription: 澄影重构版需要使用麦克风来录制视频的声音。
         NSPhotoLibraryAddUsageDescription: 澄影重构版需要把拍好的照片、实况和视频保存到系统相册。

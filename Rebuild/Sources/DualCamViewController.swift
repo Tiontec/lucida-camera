@@ -122,7 +122,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         nc.addObserver(self, selector: #selector(interrupted(_:)), name: .AVCaptureSessionWasInterrupted, object: nil)
         nc.addObserver(self, selector: #selector(interruptionEnded(_:)), name: .AVCaptureSessionInterruptionEnded, object: nil)
     }
-    deinit { NotificationCenter.default.removeObserver(self) }
+    deinit { dragLink?.invalidate(); NotificationCenter.default.removeObserver(self) }
 
     private func requestPermissions(_ done: @escaping (Bool, Bool) -> Void) {
         func ask(_ type: AVMediaType, _ cb: @escaping (Bool) -> Void) {
@@ -629,6 +629,25 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     private func inPip(_ p: CGPoint) -> Bool { engine.dual && engine.layout.style == .pip && pipRect().insetBy(dx: -10, dy: -10).contains(p) }
 
+    // 拖小窗时按设置的帧率（60 / 120）重画取景：摄像头只有 30 / 60 帧，不重画的话小窗只能跟着摄像头一格一格地动
+    private var dragLink: CADisplayLink?
+    private var dragGap: Double = 0
+    private func startDragLink() {
+        let fps = DualSettings.shared.pipDragFps
+        guard fps > 30, dragLink == nil, engine.dual else { return }
+        engine.setPipDragging(true)
+        dragGap = 0.6 / Double(fps)
+        let l = CADisplayLink(target: DragLinkTarget(self), selector: #selector(DragLinkTarget.tick))
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: Float(fps) / 2, maximum: Float(fps), preferred: Float(fps))
+        l.add(to: .main, forMode: .common)
+        dragLink = l
+    }
+    private func stopDragLink() {
+        dragLink?.invalidate(); dragLink = nil
+        engine.setPipDragging(false)
+    }
+    fileprivate func dragTick() { engine.redrawForDrag(minGap: dragGap) }
+
     /// 拖动：落在小窗上 = 移动小窗；已经有对焦框时 = 上下拖动调曝光
     @objc private func panStage(_ g: UIPanGestureRecognizer) {
         let W = stage.bounds.width, H = stage.bounds.height
@@ -636,6 +655,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         case .began:
             let p = g.location(in: stage)
             pipDragging = inPip(p); exposureDragging = !pipDragging && focusBox.isVisible
+            if pipDragging { startDragLink() }
             if exposureDragging { biasBase = focusBox.bias; focusBox.keepAlive() }
         case .changed:
             if pipDragging {
@@ -654,8 +674,9 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
                 engine.setBias(back: focusBack, v)
                 focusBox.keepAlive()
             }
-        case .ended, .cancelled:
+        case .ended, .cancelled, .failed:
             if exposureDragging { focusBox.keepAlive() }
+            if pipDragging { stopDragLink() }
             pipDragging = false; exposureDragging = false
         default: break
         }
@@ -1000,4 +1021,11 @@ final class PaddedLabel: UILabel {
         let s = super.intrinsicContentSize
         return CGSize(width: s.width + inset.left + inset.right, height: s.height + inset.top + inset.bottom)
     }
+}
+
+/// CADisplayLink 会强引用 target：用一个弱引用的小对象中转，界面才能正常释放
+private final class DragLinkTarget: NSObject {
+    private weak var vc: DualCamViewController?
+    init(_ vc: DualCamViewController) { self.vc = vc }
+    @objc func tick() { vc?.dragTick() }
 }
