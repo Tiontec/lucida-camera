@@ -371,7 +371,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         let fmt = st.heif ? "HEIF" : "JPEG"
         let r = engine.spec.res, f = engine.spec.fps
         let shown = ready ? (r == 2160 ? "4K" : "\(r)p") + " · \(f)" : (st.res == 2160 ? "4K" : "\(st.res)p") + " · \(st.fps)"
-        specPill.setTitle("\(shown) · \(fmt)" + (st.fullSensor ? " · 片门" : ""), for: .normal)
+        specPill.setTitle("\(shown) · \(fmt)" + (st.fullSensor ? " · 片门" : "") + ["", " · ⚡自动", " · ⚡开"][st.flashMode], for: .normal)
     }
     private func syncButtons() {
         btnLive.active = st.liveOn; btnLive.isEnabled = mode == .photo; btnLive.alpha = mode == .photo ? 1 : 0.4
@@ -402,7 +402,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
     @objc private func toggleLive() {
         st.liveOn.toggle(); engine.liveEnabled = st.liveOn && mode == .photo; syncButtons()
-        say(st.liveOn ? "实况已开启（\(Int(st.liveDur)) 秒，快门前 1.5 秒；实况无声音）" : "实况已关闭")
+        say(st.liveOn ? "实况已开启（\(Int(st.liveDur)) 秒，快门前 1.5 秒\(st.audio ? "，带声音" : "，无声音：录像声音开关已关")）" : "实况已关闭")
     }
     @objc private func toggleStyle() {
         var l = engine.layout; l.style = l.style == .pip ? .split : .pip; engine.layout = l
@@ -578,8 +578,17 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         v.onOpenSettings = { [weak self] in self?.openSettings() }
         v.dualOn = engine.dual
         v.onToggleDual = { [weak self] on, done in self?.setDual(on, done) }
-        v.modalPresentationStyle = .pageSheet
-        present(v, animated: true)
+        v.onOpenPalette = { [weak self] in self?.setPalette(true) }
+        v.onOpenRatio = { [weak self] in self?.setSpecPanel(true) }
+        v.flashMode = st.flashMode
+        v.onCycleFlash = { [weak self] in
+            guard let self = self else { return 0 }
+            self.st.flashMode = (self.st.flashMode + 1) % 3
+            self.syncSpecPill()
+            return self.st.flashMode
+        }
+        v.modalPresentationStyle = .overFullScreen
+        present(v, animated: false)
     }
 
     @objc private func openAlbum() {
@@ -743,7 +752,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     // MARK: - 拍摄
 
     @objc private func shutterTapped() {
-        guard ready, !reconfiguring else { return }
+        guard ready, !reconfiguring, !flashBusy else { return }
         if mode == .photo { takePhoto() }
         else if engine.isRecording { stopRecording() }
         else if liveTasks.contains(where: { $0.phase < 2 }) { say("还有实况在拍 / 合成，等它们完成再录像") }
@@ -755,7 +764,56 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         return AppDirs.outDir.appendingPathComponent("澄影双摄_\(f.string(from: Date()))_\(Int.random(in: 100...999)).\(ext)")
     }
 
+    // MARK: - 闪光灯
+
+    private var flashBusy = false, screenFlashOn = false, flashLiveNoted = false
+    private var savedBrightness: CGFloat = 0.5
+    private let screenFlashView = UIView()
+
+    /// 前置屏幕补光：整个屏幕变白 + 亮度拉满
+    private func screenFlash(_ on: Bool) {
+        if on {
+            guard !screenFlashOn else { return }
+            screenFlashOn = true
+            savedBrightness = UIScreen.main.brightness
+            UIScreen.main.brightness = 1
+            screenFlashView.backgroundColor = UIColor(white: 1, alpha: 0.96)
+            screenFlashView.frame = view.bounds
+            view.addSubview(screenFlashView)
+        } else {
+            guard screenFlashOn else { return }
+            screenFlashOn = false
+            UIScreen.main.brightness = savedBrightness
+            screenFlashView.removeFromSuperview()
+        }
+    }
+
+    /// 拍照：开了闪光灯（且需要）就先补光，等曝光适应再拍；否则直接拍
     private func takePhoto() {
+        let mode = st.flashMode
+        if mode == 0 || torchOn { doTakePhoto(); return }
+        if st.liveOn {
+            if !flashLiveNoted { flashLiveNoted = true; say("拍实况时闪光灯不起作用，要补光请用下面的手电筒按钮", 3.5) }
+            doTakePhoto(); return
+        }
+        let useScreen = !engine.dual && !mainIsBack
+        let useTorch = !useScreen && engine.hasBackTorch
+        guard useScreen || useTorch else { doTakePhoto(); return }
+        if mode == 1 && !engine.sceneIsDark(back: !useScreen) { doTakePhoto(); return }
+        flashBusy = true
+        if useTorch { engine.setTorch(true) } else { screenFlash(true) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (useTorch ? 0.45 : 0.35)) { [weak self] in
+            guard let self = self else { return }
+            self.doTakePhoto()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                guard let self = self else { return }
+                if useTorch { self.engine.setTorch(false) } else { self.screenFlash(false) }
+                self.flashBusy = false
+            }
+        }
+    }
+
+    private func doTakePhoto() {
         let live = st.liveOn
         let heif = st.heif && !live
         let url = newFile(heif ? "heic" : "jpg")
@@ -986,6 +1044,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         if saving > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.finish(code: code, msg: msg) }; return }
         finished = true
         if torchOn { engine.setTorch(false) }
+        screenFlash(false)
         engine.liveEnabled = false
         engine.stop()
         let result = items

@@ -48,6 +48,12 @@ final class DualSettings {
         set { d.set(newValue, forKey: key("ratio")) }
     }
 
+    /// 拍照闪光灯：0 关 / 1 自动（暗处才闪）/ 2 开。后置用手电筒补光，前置用屏幕补光
+    var flashMode: Int {
+        get { let v = d.integer(forKey: key("flashMode")); return (0...2).contains(v) ? v : 0 }
+        set { d.set(newValue, forKey: key("flashMode")) }
+    }
+
     var liveTimer: Bool { get { d.object(forKey: key("liveTimer")) as? Bool ?? true } set { d.set(newValue, forKey: key("liveTimer")) } }
 
     /// 前后摄像头各一套调色

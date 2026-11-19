@@ -490,6 +490,15 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     func start() { sessionQueue.async { if !self.session.isRunning { self.session.startRunning() } } }
     func stop() { sessionQueue.async { if self.session.isRunning { self.session.stopRunning() } } }
 
+    var hasBackTorch: Bool { backDevice?.hasTorch ?? false }
+
+    /// 现在的环境暗不暗（自动闪光灯用）：自动曝光已经把感光度拉高 / 快门拖慢，说明光线不够
+    func sceneIsDark(back: Bool) -> Bool {
+        guard let d = back ? backDevice : frontDevice else { return false }
+        let s = CMTimeGetSeconds(d.exposureDuration)
+        return d.iso >= 640 || (s.isFinite && s >= 1.0 / 24.0)
+    }
+
     func setTorch(_ on: Bool) {
         guard let d = backDevice, d.hasTorch else { return }
         try? d.lockForConfiguration()
