@@ -49,6 +49,8 @@ final class DualSettingsViewController: UIViewController {
             self?.st.fullSensor = v; self?.onChange?(true) }
         addSwitch("满帧画面运行录制", "开：不因手机发烫自动降帧，取景和录制都按所选帧率；关：发烫时自动降到 30 帧、60 帧取景隔帧刷新，降低功耗，保证录完的视频流畅", st.fullRate) { [weak self] v in
             self?.st.fullRate = v; self?.onChange?(false) }
+        addSwitch("取景网格线", "在取景框里画三分线，方便构图", st.gridLines) { [weak self] v in self?.st.gridLines = v; self?.onChange?(false) }
+        addSwitch("水平仪", "取景框中间显示水平线：竖拿手机时线跟地平线平行，歪在 0.8° 内变黄；手机平放俯拍时变成圆圈 + 小圆点", st.level) { [weak self] v in self?.st.level = v; self?.onChange?(false) }
         let pf: [Int] = [30, 60, 120]
         addSeg("小窗滑动帧率", pf.map { "\($0) 帧" }, pf.firstIndex(of: st.pipDragFps) ?? 1) { [st] i in st.pipDragFps = pf[i] }
         let bs: [PipBorder] = [.none, .white, .black]

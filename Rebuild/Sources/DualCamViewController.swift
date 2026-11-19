@@ -1,6 +1,7 @@
 import UIKit
 import Photos
 import AVFoundation
+import CoreMotion
 
 /// 原生双摄相机界面：取景（引擎合成的画面）+ 顶部 / 底部控件 + 变焦转盘 + 调色面板 + 设置 + 相册。
 final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate {
@@ -18,6 +19,10 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private var saving = 0
     private var wantUW = false
     private var torchOn = false
+    private let gridView = DualGridView(), levelView = DualLevelView(), countLabel = UILabel()
+    private let motion = CMMotionManager()
+    private var counting = false, countLeft = 0
+    private var countTimer: Timer?
     private var recTimer: Timer?
     private var recStart = Date()
     private let yellow = UIColor(red: 1, green: 0.84, blue: 0.04, alpha: 1)
@@ -146,8 +151,51 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         engine.liveEnabled = st.liveOn && mode == .photo
         if !note.isEmpty { say(note, 4.5) }
         syncZoomRange(resetTo: nil)
-        syncSpecPill(); syncButtons()
+        syncSpecPill(); syncButtons(); syncOverlays()
         engine.layout.pipRadius = pipRadiusValue()
+    }
+
+    // MARK: - 网格线 / 水平仪 / 倒计时
+
+    /// 按设置显示 / 隐藏网格线和水平仪（水平仪开着才读陀螺仪）
+    private func syncOverlays() {
+        gridView.isHidden = !st.gridLines
+        levelView.isHidden = !st.level
+        if st.level, motion.isDeviceMotionAvailable {
+            if !motion.isDeviceMotionActive {
+                motion.deviceMotionUpdateInterval = 1.0 / 30
+                motion.startDeviceMotionUpdates(to: .main) { [weak self] m, _ in
+                    guard let g = m?.gravity else { return }
+                    self?.levelView.apply(gx: g.x, gy: g.y, gz: g.z)
+                }
+            }
+        } else if motion.isDeviceMotionActive { motion.stopDeviceMotionUpdates() }
+    }
+
+    private func startCountdown(_ sec: Int, then fire: @escaping () -> Void) {
+        counting = true; countLeft = sec
+        func show() {
+            countLabel.text = "\(countLeft)"; countLabel.isHidden = false
+            countLabel.transform = CGAffineTransform(scaleX: 1.35, y: 1.35); countLabel.alpha = 0.3
+            UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseOut]) { self.countLabel.transform = .identity; self.countLabel.alpha = 1 }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        show()
+        countTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
+            guard let self = self else { t.invalidate(); return }
+            self.countLeft -= 1
+            if self.countLeft > 0 { show(); return }
+            t.invalidate(); self.countTimer = nil
+            self.counting = false; self.countLabel.isHidden = true
+            fire()
+        }
+    }
+
+    private func cancelCountdown(say msg: Bool = true) {
+        guard counting else { return }
+        countTimer?.invalidate(); countTimer = nil
+        counting = false; countLabel.isHidden = true
+        if msg { say("已取消倒计时") }
     }
 
     // MARK: - 布局
@@ -173,6 +221,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             stageFrame = f
             stage.frame = f
             engine.previewLayer.frame = stage.bounds
+            gridView.frame = stage.bounds; levelView.frame = stage.bounds; countLabel.frame = stage.bounds
             zoomCtl.frame = CGRect(x: f.minX, y: f.maxY - 160, width: f.width, height: 160)
         }
         bottomBar.frame = CGRect(x: 0, y: H - barH, width: W, height: barH)
@@ -203,6 +252,10 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         let swipeL = UISwipeGestureRecognizer(target: self, action: #selector(swipePreset(_:))); swipeL.direction = .left
         let swipeR = UISwipeGestureRecognizer(target: self, action: #selector(swipePreset(_:))); swipeR.direction = .right
         [pan, tap, dbl, lp, swipeL, swipeR].forEach { stage.addGestureRecognizer($0) }
+        stage.addSubview(gridView); stage.addSubview(levelView); stage.addSubview(countLabel)
+        countLabel.textAlignment = .center; countLabel.font = .systemFont(ofSize: 110, weight: .bold); countLabel.textColor = .white
+        countLabel.shadowColor = UIColor(white: 0, alpha: 0.5); countLabel.shadowOffset = CGSize(width: 0, height: 2)
+        countLabel.isHidden = true; countLabel.isUserInteractionEnabled = false
         view.addSubview(zoomCtl)
         zoomCtl.onZoom = { [weak self] z in guard let self = self else { return }; self.engine.setZoom(back: self.mainIsBack, z) }
         zoomCtl.onSettle = { [weak self] z in self?.zoomSettled(z) }
@@ -371,7 +424,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         let fmt = st.heif ? "HEIF" : "JPEG"
         let r = engine.spec.res, f = engine.spec.fps
         let shown = ready ? (r == 2160 ? "4K" : "\(r)p") + " · \(f)" : (st.res == 2160 ? "4K" : "\(st.res)p") + " · \(st.fps)"
-        specPill.setTitle("\(shown) · \(fmt)" + (st.fullSensor ? " · 片门" : "") + ["", " · ⚡自动", " · ⚡开"][st.flashMode], for: .normal)
+        specPill.setTitle("\(shown) · \(fmt)" + (st.fullSensor ? " · 片门" : "") + ["", " · ⚡自动", " · ⚡开"][st.flashMode] + (st.timerSec > 0 ? " · ⏱\(st.timerSec)s" : ""), for: .normal)
     }
     private func syncButtons() {
         btnLive.active = st.liveOn; btnLive.isEnabled = mode == .photo; btnLive.alpha = mode == .photo ? 1 : 0.4
@@ -565,7 +618,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             guard let self = self else { return }
             var l = self.engine.layout; l.border = self.st.border; l.mirrorFront = self.st.mirror; self.engine.layout = l
             self.engine.fullRate = self.st.fullRate
-            self.applyGlass(); self.syncSpecPill(); self.syncButtons()
+            self.applyGlass(); self.syncSpecPill(); self.syncButtons(); self.syncOverlays()
             if recfg { self.view.setNeedsLayout(); self.view.layoutIfNeeded(); self.applySpec() }
         }
         v.modalPresentationStyle = .pageSheet
@@ -580,6 +633,14 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         v.onToggleDual = { [weak self] on, done in self?.setDual(on, done) }
         v.onOpenPalette = { [weak self] in self?.setPalette(true) }
         v.onOpenRatio = { [weak self] in self?.setSpecPanel(true) }
+        v.timerSec = st.timerSec
+        v.onCycleTimer = { [weak self] in
+            guard let self = self else { return 0 }
+            let seq = [0, 3, 5, 10]
+            self.st.timerSec = seq[((seq.firstIndex(of: self.st.timerSec) ?? 0) + 1) % seq.count]
+            self.syncSpecPill()
+            return self.st.timerSec
+        }
         v.flashMode = st.flashMode
         v.onCycleFlash = { [weak self] in
             guard let self = self else { return 0 }
@@ -752,6 +813,16 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     // MARK: - 拍摄
 
     @objc private func shutterTapped() {
+        guard ready, !reconfiguring, !flashBusy else { return }
+        if counting { cancelCountdown(); return }
+        if st.timerSec > 0 && !engine.isRecording {
+            startCountdown(st.timerSec) { [weak self] in self?.fireShutter() }
+            return
+        }
+        fireShutter()
+    }
+
+    private func fireShutter() {
         guard ready, !reconfiguring, !flashBusy else { return }
         if mode == .photo { takePhoto() }
         else if engine.isRecording { stopRecording() }
@@ -1045,6 +1116,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         finished = true
         if torchOn { engine.setTorch(false) }
         screenFlash(false)
+        cancelCountdown(say: false)
+        if motion.isDeviceMotionActive { motion.stopDeviceMotionUpdates() }
         engine.liveEnabled = false
         engine.stop()
         let result = items

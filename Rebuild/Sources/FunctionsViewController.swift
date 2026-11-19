@@ -12,6 +12,9 @@ final class FunctionsViewController: UIViewController {
     /// 闪光灯：当前模式（0 关 / 1 自动 / 2 开）；点一下切到下一档，回调返回新的模式
     var flashMode = 0
     var onCycleFlash: (() -> Int)?
+    /// 倒计时：当前秒数（0 关 / 3 / 5 / 10）；点一下切到下一档，回调返回新的秒数
+    var timerSec = 0
+    var onCycleTimer: (() -> Int)?
     /// 双摄开关：当前状态 / 请求切换（回调：最终状态，提示文字）
     var dualOn = false
     var onToggleDual: ((Bool, @escaping (Bool, String?) -> Void) -> Void)?
@@ -72,6 +75,7 @@ final class FunctionsViewController: UIViewController {
             let t = PanelTile(item: it, glass: st.glass)
             if it.action == .toggleDual { t.active = dualOn }
             if it.action == .cycleFlash { t.active = flashMode != 0 }
+            if it.action == .cycleTimer { t.active = timerSec != 0 }
             t.addTarget(self, action: #selector(tileTapped(_:)), for: .touchUpInside)
             content.addSubview(t)
             tiles.append(t)
@@ -229,6 +233,11 @@ final class FunctionsViewController: UIViewController {
             flashMode = cycle()
             tile.active = flashMode != 0
             showToast(["闪光灯：关", "闪光灯：自动（暗处才闪）", "闪光灯：开"][flashMode])
+        case .cycleTimer:
+            guard let cycle = onCycleTimer else { return }
+            timerSec = cycle()
+            tile.active = timerSec != 0
+            showToast(timerSec == 0 ? "倒计时：关" : "倒计时：\(timerSec) 秒（点快门后倒数，再点一下取消）")
         case .none:
             showToast(SettingsRegistry.panelSoonToast)
         }

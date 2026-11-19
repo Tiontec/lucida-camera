@@ -3,7 +3,7 @@ import UIKit
 /// 多功能面板里一个按钮的描述
 struct PanelItem {
     enum State { case enabled, soon }          // enabled = 正常可点；soon = 灰色，点击提示「未加入此功能」
-    enum Action { case none, openPalette, toggleDual, openRatio, cycleFlash }
+    enum Action { case none, openPalette, toggleDual, openRatio, cycleFlash, cycleTimer }
     let id: String
     let title: String
     let symbols: [String]                       // SF Symbol 名，前面的优先，系统没有就用后面的（iOS 15 兼容）
@@ -21,7 +21,7 @@ enum PanelRegistry {
         PanelItem(id: "flash", title: "闪光灯", symbols: ["bolt.fill"], state: .enabled, action: .cycleFlash),
         PanelItem(id: "palette", title: "调色盘", symbols: ["circle.grid.3x3.fill", "square.grid.3x3.fill"], state: .enabled, action: .openPalette),
         PanelItem(id: "ratio", title: "比例", symbols: ["viewfinder", "aspectratio"], state: .enabled, action: .openRatio),
-        PanelItem(id: "timer", title: "倒计时", symbols: ["timer"], state: .soon, action: .none),
+        PanelItem(id: "timer", title: "倒计时", symbols: ["timer"], state: .enabled, action: .cycleTimer),
         PanelItem(id: "pano", title: "360° 全景", symbols: ["globe"], state: .soon, action: .none),
         PanelItem(id: "dual", title: "前后双摄", symbols: ["rectangle.inset.filled.on.rectangle", "rectangle.on.rectangle"], state: .enabled, action: .toggleDual),
         PanelItem(id: "space", title: "空间重构", symbols: ["cube", "shippingbox"], state: .soon, action: .none),

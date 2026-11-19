@@ -54,6 +54,16 @@ final class DualSettings {
         set { d.set(newValue, forKey: key("flashMode")) }
     }
 
+    /// 取景网格线（三分线）
+    var gridLines: Bool { get { d.bool(forKey: key("grid")) } set { d.set(newValue, forKey: key("grid")) } }
+    /// 水平仪
+    var level: Bool { get { d.bool(forKey: key("level")) } set { d.set(newValue, forKey: key("level")) } }
+    /// 倒计时拍摄：0 关 / 3 / 5 / 10 秒（拍照、录像、实况都适用）
+    var timerSec: Int {
+        get { let v = d.integer(forKey: key("timerSec")); return [0, 3, 5, 10].contains(v) ? v : 0 }
+        set { d.set(newValue, forKey: key("timerSec")) }
+    }
+
     var liveTimer: Bool { get { d.object(forKey: key("liveTimer")) as? Bool ?? true } set { d.set(newValue, forKey: key("liveTimer")) } }
 
     /// 前后摄像头各一套调色
