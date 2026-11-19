@@ -2,8 +2,8 @@ import Foundation
 
 /// 版本号规则：加设置 +0.0.1 · 加功能 +0.1.0 · 大更新 +1.0.0（满 10 进一）
 enum AppInfo {
-    static let version = "1.2.0"
-    static let build = "3"
+    static let version = "1.3.0"
+    static let build = "4"
     static let name = "澄影重构版"
 }
 

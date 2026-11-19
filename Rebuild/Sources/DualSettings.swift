@@ -42,6 +42,12 @@ final class DualSettings {
     /// 满帧画面运行录制：开 = 不因设备发烫自动降帧，预览和录制都按所选帧率；关 = 发烫时自动降到 30 帧并减半取景渲染，保证录完的视频流畅
     var fullRate: Bool { get { d.bool(forKey: key("fullRate")) } set { d.set(newValue, forKey: key("fullRate")) } }
 
+    /// 画幅比例（竖屏取景）：16:9（铺满，默认）/ 4:3 / 1:1。「片门全开」开着时固定 3:4，不受这项影响
+    var ratio: String {
+        get { let v = d.string(forKey: key("ratio")) ?? ""; return ["16:9", "4:3", "1:1"].contains(v) ? v : "16:9" }
+        set { d.set(newValue, forKey: key("ratio")) }
+    }
+
     var liveTimer: Bool { get { d.object(forKey: key("liveTimer")) as? Bool ?? true } set { d.set(newValue, forKey: key("liveTimer")) } }
 
     /// 前后摄像头各一套调色

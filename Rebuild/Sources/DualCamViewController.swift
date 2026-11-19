@@ -161,7 +161,13 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         let avail = H - stageTop - barH
         var sw = W, sh: CGFloat
         if st.fullSensor { sh = min(W * 4 / 3, avail); sw = sh * 3 / 4 }
-        else { sh = min(W * 16 / 9, avail) }
+        else {
+            switch st.ratio {
+            case "4:3": sh = min(W * 4 / 3, avail); sw = sh * 3 / 4
+            case "1:1": sh = min(W, avail); sw = sh
+            default: sh = min(W * 16 / 9, avail)
+            }
+        }
         let f = CGRect(x: ((W - sw) / 2).rounded(), y: stageTop, width: sw.rounded(), height: sh.rounded())
         if f != stageFrame {
             stageFrame = f
@@ -317,7 +323,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         let defs: [(String, [String], Int)] = [
             ("分辨率", ["720p", "1080p", "4K"], [720, 1080, 2160].firstIndex(of: st.res) ?? 1),
             ("帧率", ["24", "30", "60"], [24, 30, 60].firstIndex(of: st.fps) ?? 1),
-            ("照片格式", ["JPEG", "HEIF", "ProRAW"], st.heif ? 1 : 0)]
+            ("照片格式", ["JPEG", "HEIF", "ProRAW"], st.heif ? 1 : 0),
+            ("画幅", ["16:9", "4:3", "1:1"], ["16:9", "4:3", "1:1"].firstIndex(of: st.ratio) ?? 0)]
         let col = UIStackView(); col.axis = .vertical; col.spacing = 10; col.translatesAutoresizingMaskIntoConstraints = false
         specPanel.addSubview(col)
         for (i, d) in defs.enumerated() {
@@ -509,6 +516,15 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         switch tag {
         case 0: st.res = [720, 1080, 2160][idx]
         case 1: st.fps = [24, 30, 60][idx]
+        case 3:
+            let r = ["16:9", "4:3", "1:1"][idx]
+            if r == st.ratio { return }
+            if st.fullSensor { specSegs[3].select(["16:9", "4:3", "1:1"].firstIndex(of: st.ratio) ?? 0); say("「片门全开」开着时画幅固定为 4:3，关掉后才能改", 3.5); return }
+            if engine.isRecording || reconfiguring || !ready { specSegs[3].select(["16:9", "4:3", "1:1"].firstIndex(of: st.ratio) ?? 0); say("录像中或正在切换，稍后再改画幅", 3); return }
+            st.ratio = r
+            view.setNeedsLayout(); view.layoutIfNeeded()
+            applySpec()
+            return
         default:
             if idx == 2 { specSegs[2].select(st.heif ? 1 : 0); say("双摄同时拍摄时系统不支持 ProRAW"); return }
             st.heif = idx == 1; syncSpecPill(); return
