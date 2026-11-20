@@ -51,6 +51,12 @@ final class DualSettingsViewController: UIViewController {
         addSeg("单摄 · 实况时长", sd.map { "\(Int($0)) 秒" }, sd.firstIndex(of: st.sLiveDur) ?? 0) { [st] i in st.sLiveDur = sd[i] }
         addSeg("单摄 · 实况保存方式", ["只存实况", "实况 + 静态照片"], st.sLiveStill ? 1 : 0) { [st] i in st.sLiveStill = i == 1 }
         addSwitch("单摄 · 实况计时显示", nil, st.sLiveTimer) { [st] v in st.sLiveTimer = v }
+        let zs = ["10×", "15×", "20×", "25×", "30×"]
+        addSeg("变焦速度（转盘滑一屏 1×→）", zs, max(0, min(4, st.zoomSpeed))) { [st] i in st.zoomSpeed = i }
+        let uwv = ["off", "0.6", "0.5"]
+        addSeg("超广角（重启相机后生效）", ["关闭", "0.6×", "0.5×"], uwv.firstIndex(of: st.uwScale) ?? 2) { [st] i in st.uwScale = uwv[i] }
+        let tlv = ["auto", "2", "2.5", "3", "4", "5"]
+        addSeg("长焦镜头倍数（重启相机后生效）", ["自动", "2×", "2.5×", "3×", "4×", "5×"], tlv.firstIndex(of: st.teleScale) ?? 0) { [st] i in st.teleScale = tlv[i] }
         let zr: [Int] = [30, 50, 80, 100]
         addSeg("变焦倍率上限（重启相机后生效）", zr.map { "\($0)×" }, zr.firstIndex(of: st.zoomRange) ?? 0) { [st] i in st.zoomRange = zr[i] }
         addSwitch("片门全开", "前后摄像头都用 4:3 整块传感器规格，成品 3:4；帧率尽量保持所选值", st.fullSensor) { [weak self] v in
