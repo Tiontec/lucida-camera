@@ -829,6 +829,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         }
         if previewLayer.status == .failed { previewLayer.flush() }
         previewLayer.enqueue(sample)
+        GlassRefractHub.shared.offer(dst)          // 液态玻璃的折射用（没有玻璃控件在折射时立刻返回，不花时间）
     }
 
     // MARK: - 合成

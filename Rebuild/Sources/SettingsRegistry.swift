@@ -18,6 +18,7 @@ struct SOption {
     let title: String    // 选项标题
     let sub: String      // 说明文字
     let short: String    // 设置行右侧显示的简短当前值
+    var soon: Bool = false   // true = 这个选项灰色，点击提示「不可用」，不会被选中（如「液态玻璃」）
 }
 
 struct SItem {
