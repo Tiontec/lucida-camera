@@ -171,14 +171,14 @@ extension SettingsRegistry {
                 opts.append(SOption(v: "2", title: "1× → 20×　快速变焦", sub: "手指横向滑动约 1/3 屏宽，变焦从 1× → 20×", short: "1× → 20×"))
                 opts.append(SOption(v: "3", title: "1× → 25×　快速变焦", sub: "手指横向滑动约 1/3 屏宽，变焦从 1× → 25×", short: "1× → 25×"))
                 opts.append(SOption(v: "4", title: "1× → 30×　极速变焦", sub: "手指横向滑动约 1/3 屏宽，变焦从 1× → 30×", short: "1× → 30×"))
-                items.append(SItem(id: "zoomSpeed", title: "变焦速度", sub: "", type: .radio, scope: .both, status: .soon, def: "4", options: opts, notes: ["用于调节变焦转盘的跟手程度：档位越高，手指滑动同样距离，变焦变化越大。"], dest: "", inline: false, reconfigure: false, icon: "slider.horizontal.3", min: 0, max: 0))
+                items.append(SItem(id: "zoomSpeed", title: "变焦速度", sub: "", type: .radio, scope: .both, status: .live, def: "4", options: opts, notes: ["用于调节变焦转盘的跟手程度：档位越高，手指滑动同样距离，变焦变化越大。"], dest: "", inline: false, reconfigure: false, icon: "slider.horizontal.3", min: 0, max: 0))
             }
             do {
                 var opts: [SOption] = []
                 opts.append(SOption(v: "off", title: "关闭 0.5×", sub: "设备没有超广角镜头时选这个，最小变焦为 1×", short: "关闭"))
                 opts.append(SOption(v: "0.6", title: "开启 0.6×", sub: "适用于超广角为 0.6× 的安卓设备", short: "0.6×"))
                 opts.append(SOption(v: "0.5", title: "开启 0.5×", sub: "标准超广角（iPhone 等，默认）", short: "0.5×"))
-                items.append(SItem(id: "uwScale", title: "超广角倍数", sub: "", type: .radio, scope: .both, status: .soon, def: "0.5", options: opts, notes: ["不同手机的超广角倍数不同。选对后，变焦条、转盘的最小倍数和画面视野会与镜头一致；若设备自己的最小变焦更高，会自动取更高的值。"], dest: "", inline: false, reconfigure: false, icon: "eye", min: 0, max: 0))
+                items.append(SItem(id: "uwScale", title: "超广角倍数", sub: "", type: .radio, scope: .both, status: .live, def: "0.5", options: opts, notes: ["不同手机的超广角倍数不同。选对后，变焦条、转盘的最小倍数和画面视野会与镜头一致；若设备自己的最小变焦更高，会自动取更高的值。"], dest: "", inline: false, reconfigure: false, icon: "eye", min: 0, max: 0))
             }
             groups.append(SGroup(head: "变焦", foot: "", items: items))
         }
@@ -192,7 +192,7 @@ extension SettingsRegistry {
                 opts.append(SOption(v: "3", title: "3×", sub: "iPhone 13 Pro、14 Pro、15 Pro", short: "3×"))
                 opts.append(SOption(v: "4", title: "4×", sub: "iPhone 17 Pro 系列", short: "4×"))
                 opts.append(SOption(v: "5", title: "5×", sub: "iPhone 15 Pro Max、16 Pro 系列", short: "5×"))
-                items.append(SItem(id: "teleScale", title: "长焦镜头倍数", sub: "", type: .radio, scope: .both, status: .soon, def: "auto", options: opts, notes: ["手机有长焦镜头时，变焦到这个倍数，就会换成长焦镜头；再往上放大（例如 30×）是在长焦画面上继续数码放大，比主摄直接放大更清晰。自动识别不准时请在这里手动选。"], dest: "", inline: false, reconfigure: false, icon: "scope", min: 0, max: 0))
+                items.append(SItem(id: "teleScale", title: "长焦镜头倍数", sub: "", type: .radio, scope: .both, status: .live, def: "auto", options: opts, notes: ["手机有长焦镜头时，变焦到这个倍数，就会换成长焦镜头；再往上放大（例如 30×）是在长焦画面上继续数码放大，比主摄直接放大更清晰。自动识别不准时请在这里手动选。"], dest: "", inline: false, reconfigure: false, icon: "scope", min: 0, max: 0))
             }
             do {
                 var opts: [SOption] = []
