@@ -89,7 +89,7 @@ extension SettingsRegistry {
                 opts.append(SOption(v: "15", title: "15 帧", sub: "最省内存和电量", short: "15 帧"))
                 opts.append(SOption(v: "30", title: "30 帧（推荐）", sub: "流畅，内存适中", short: "30 帧"))
                 opts.append(SOption(v: "60", title: "60 帧", sub: "最顺滑；每帧像素会比 30 帧略小", short: "60 帧"))
-                items.append(SItem(id: "sLiveFps", title: "实况帧率", sub: "", type: .radio, scope: .single, status: .soon, def: "30", options: opts, notes: [], dest: "", inline: true, reconfigure: false, icon: "speedometer", min: 0, max: 0))
+                items.append(SItem(id: "sLiveFps", title: "实况帧率", sub: "", type: .radio, scope: .single, status: .live, def: "30", options: opts, notes: [], dest: "", inline: true, reconfigure: false, icon: "speedometer", min: 0, max: 0))
             }
             groups.append(SGroup(head: "实况帧率", foot: "只影响之后拍的实况，也决定编辑后实况视频重新生成时的帧率。已拍好的 15 帧实况无法凭空补帧。", items: items))
         }
@@ -101,7 +101,7 @@ extension SettingsRegistry {
                 opts.append(SOption(v: "5", title: "5 秒", sub: "快门前 1.5 秒 + 快门后 3.5 秒", short: "5 秒"))
                 opts.append(SOption(v: "6", title: "6 秒", sub: "快门前 1.5 秒 + 快门后 4.5 秒", short: "6 秒"))
                 opts.append(SOption(v: "8", title: "8 秒", sub: "快门前 1.5 秒 + 快门后 6.5 秒；建议配 15～30 帧", short: "8 秒"))
-                items.append(SItem(id: "sLiveDur", title: "实况时长", sub: "", type: .radio, scope: .single, status: .soon, def: "3", options: opts, notes: [], dest: "", inline: true, reconfigure: false, icon: "timer", min: 0, max: 0))
+                items.append(SItem(id: "sLiveDur", title: "实况时长", sub: "", type: .radio, scope: .single, status: .live, def: "3", options: opts, notes: [], dest: "", inline: true, reconfigure: false, icon: "timer", min: 0, max: 0))
             }
             groups.append(SGroup(head: "实况时长", foot: "只影响之后拍的实况。快门前固定记录 1.5 秒，其余时间在按下快门后继续记录；时间越长，合成越久。", items: items))
         }
@@ -111,7 +111,7 @@ extension SettingsRegistry {
                 var opts: [SOption] = []
                 opts.append(SOption(v: "0", title: "只存实况", sub: "只保存一个实况照片（默认）", short: "只存实况"))
                 opts.append(SOption(v: "1", title: "实况 + 静态照片", sub: "实况之外，再多存一张同一瞬间的静态照片", short: "实况 + 静态照片"))
-                items.append(SItem(id: "sLiveStill", title: "实况保存方式", sub: "", type: .radio, scope: .single, status: .soon, def: "0", options: opts, notes: ["选「实况 + 静态照片」时，每次拍摄会在系统相册里多一张同一瞬间的静态照片。"], dest: "", inline: false, reconfigure: false, icon: "livephoto", min: 0, max: 0))
+                items.append(SItem(id: "sLiveStill", title: "实况保存方式", sub: "", type: .radio, scope: .single, status: .live, def: "0", options: opts, notes: ["选「实况 + 静态照片」时，每次拍摄会在系统相册里多一张同一瞬间的静态照片。"], dest: "", inline: false, reconfigure: false, icon: "livephoto", min: 0, max: 0))
             }
             groups.append(SGroup(head: "实况保存", foot: "", items: items))
         }
@@ -119,7 +119,7 @@ extension SettingsRegistry {
             var items: [SItem] = []
             do {
                 var opts: [SOption] = []
-                items.append(SItem(id: "sLiveTimer", title: "实况计时显示", sub: "拍实况时在取景框左上角显示已经拍到第几秒、有没有拍完", type: .toggle, scope: .single, status: .soon, def: "1", options: opts, notes: [], dest: "", inline: false, reconfigure: false, icon: "clock", min: 0, max: 0))
+                items.append(SItem(id: "sLiveTimer", title: "实况计时显示", sub: "拍实况时在取景框左上角显示已经拍到第几秒、有没有拍完", type: .toggle, scope: .single, status: .live, def: "1", options: opts, notes: [], dest: "", inline: false, reconfigure: false, icon: "clock", min: 0, max: 0))
             }
             groups.append(SGroup(head: "", foot: "", items: items))
         }
@@ -224,7 +224,7 @@ extension SettingsRegistry {
                 opts.append(SOption(v: "50", title: "扩充到 50×", sub: "超出镜头本身的部分为数码放大", short: "扩充到 50×"))
                 opts.append(SOption(v: "80", title: "扩充到 80×", sub: "画质会下降，但变焦动作保持顺滑", short: "扩充到 80×"))
                 opts.append(SOption(v: "100", title: "扩充到 100×", sub: "最大范围，数码放大最多", short: "扩充到 100×"))
-                items.append(SItem(id: "zoomRange", title: "变焦倍率扩充", sub: "", type: .radio, scope: .both, status: .soon, def: "30", options: opts, notes: [], dest: "", inline: true, reconfigure: false, icon: "plus.magnifyingglass", min: 0, max: 0))
+                items.append(SItem(id: "zoomRange", title: "变焦倍率扩充", sub: "", type: .radio, scope: .both, status: .live, def: "30", options: opts, notes: [], dest: "", inline: true, reconfigure: false, icon: "plus.magnifyingglass", min: 0, max: 0))
             }
             groups.append(SGroup(head: "变焦倍率扩充", foot: "选择转盘、双指和滚轮变焦的最高倍数。超过镜头本身的部分是数码放大。", items: items))
         }

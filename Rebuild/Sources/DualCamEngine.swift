@@ -478,12 +478,12 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     func zoomRange(back: Bool) -> (CGFloat, CGFloat) {
         if back, backVirtual, let d = backDevice {
             let lo = max(0.5, d.minAvailableVideoZoomFactor / virtualWideAt)
-            let hi = min(30, d.maxAvailableVideoZoomFactor / virtualWideAt)
+            let hi = min(CGFloat(max(30, DualSettings.shared.zoomRange)), d.maxAvailableVideoZoomFactor / virtualWideAt)
             return (hasUltraWide ? lo : 1, max(1, hi))
         }
         if back {
             let wide = backDevice?.deviceType == .builtInWideAngleCamera ? backDevice : AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-            let hi = min(30, wide?.activeFormat.videoMaxZoomFactor ?? 10)
+            let hi = min(CGFloat(max(30, DualSettings.shared.zoomRange)), wide?.activeFormat.videoMaxZoomFactor ?? 10)
             return (hasUltraWide ? 0.5 : 1, max(1, hi))
         }
         let hi = min(10, frontDevice?.activeFormat.videoMaxZoomFactor ?? 1)
@@ -1047,13 +1047,18 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         let done: (URL?, Double, String?) -> Void
     }
     private var liveJobs: [LiveJob] = []
+    private var cachedLiveFps = 30
 
     /// 实况开着时，持续把取景成品（合成 + 调色后、缩小到长边 720）送进那一路编码器。
     /// 画面直接从刚画好的取景成品缩小得到，不再另外「合成 + 调色」一遍。
     private func collectLive(from src: CVPixelBuffer, pts: CMTime) {
         guard liveEnabled || !liveJobs.isEmpty, !isRecording, let pool = livePool else { return }
         pvFrameN += 1
-        if actualBackFps > 35 && fullRate && pvFrameN % 2 == 1 { return }       // 满帧 60 时隔帧取，实况视频按 30 帧
+        // 实况视频帧率：双摄固定 30；单摄按设置「实况帧率」（15 / 30 / 60）。按取景帧率隔 N 帧取一帧
+        if pvFrameN % 90 == 1 { cachedLiveFps = dual ? 30 : max(15, min(60, DualSettings.shared.sLiveFps)) }
+        let capFps = Double((actualBackFps > 30 && !fullRate) ? 30 : max(1, actualBackFps))   // 非「满帧」时取景只处理 30 帧/秒
+        let step = max(1, Int((capFps / Double(cachedLiveFps)).rounded()))
+        if pvFrameN % step != 0 { return }
         if liveEnc == nil || liveEnc!.size != liveSize { liveEnc = LiveEncoder(size: liveSize) }
         guard let enc = liveEnc else { return }
         // 画面断过（录像期间 / 刚把实况打开）：旧样本接不上新画面，清掉重来

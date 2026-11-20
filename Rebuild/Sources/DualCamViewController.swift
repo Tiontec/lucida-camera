@@ -478,7 +478,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
     @objc private func toggleLive() {
         st.liveOn.toggle(); engine.liveEnabled = st.liveOn && mode == .photo; syncButtons()
-        say(st.liveOn ? "实况已开启（\(Int(st.liveDur)) 秒，快门前 1.5 秒\(st.audio ? "，带声音" : "，无声音：录像声音开关已关")）" : "实况已关闭")
+        say(st.liveOn ? "实况已开启（\(Int(liveSeconds)) 秒，快门前 1.5 秒\(st.audio ? "，带声音" : "，无声音：录像声音开关已关")）" : "实况已关闭")
     }
     @objc private func toggleStyle() {
         var l = engine.layout; l.style = l.style == .pip ? .split : .pip; engine.layout = l
@@ -921,10 +921,10 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         if live {
             // 实况可以连拍：上一张还没拍完 / 合成完，也可以继续按快门，每张各自排队，左上角各有一行进度
             liveSeq += 1
-            let t = LiveTask(n: liveSeq, total: max(1.0, st.liveDur), photo: url)
+            let t = LiveTask(n: liveSeq, total: max(1.0, liveSeconds), photo: url)
             task = t; liveTasks.append(t); saving += 1
             addLiveRow(t)
-            engine.captureLive(totalSeconds: st.liveDur) { [weak self] mov, still, err in
+            engine.captureLive(totalSeconds: liveSeconds) { [weak self] mov, still, err in
                 DispatchQueue.main.async { self?.liveCaptured(t, mov, still, err) }
             }
         }
@@ -968,7 +968,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             DualLibrary.add(id)
             self.updateThumb(t.photo)
             t.phase = ok ? 2 : 3; if !ok { t.note = msg ?? "" }
-            if ok, self.st.liveAlsoStill { PhotoSaver.save(file: t.photo, isVideo: false) { _, _ in } }
+            if ok, self.liveAlsoStill { PhotoSaver.save(file: t.photo, isVideo: false) { _, _ in } }
             self.liveTaskEnded(t, msg: ok ? "实况照片已存入系统相册" : "实况没存进系统相册：\(msg ?? "")")
         }
     }
@@ -987,7 +987,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
 
     private func refreshLiveRows() {
-        let show = st.liveTimer
+        let show = liveTimerOn
         liveStack.isHidden = !show || liveTasks.isEmpty
         let pre = 1.5
         for (idx, t) in liveTasks.enumerated() {
@@ -1014,7 +1014,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     /// 一张实况收尾。所有实况都完成了，进度条才一起收起来
     private func liveTaskEnded(_ t: LiveTask, msg: String) {
         refreshLiveRows()
-        if !st.liveTimer || t.phase == 3 { say(msg, 2.6) }
+        if !liveTimerOn || t.phase == 3 { say(msg, 2.6) }
         guard !liveTasks.contains(where: { $0.phase < 2 }) else { return }
         liveHideToken += 1
         let tok = liveHideToken
@@ -1037,6 +1037,11 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     /// 录像从「按下开始」到「按下停止」的界面状态（引擎的 isRecording 要等第一帧到了才变真，中间有一小段空档）
     private var recUI = false
+
+    // 实况的三项设置：双摄用「双摄设置」里的，单摄用「拍照与实况」里的
+    private var liveSeconds: Double { engine.dual ? st.liveDur : (st.sLiveDur > 0 ? st.sLiveDur : 3) }
+    private var liveAlsoStill: Bool { engine.dual ? st.liveAlsoStill : st.sLiveStill }
+    private var liveTimerOn: Bool { engine.dual ? st.liveTimer : st.sLiveTimer }
 
     private func startRecording() {
         recUI = true
