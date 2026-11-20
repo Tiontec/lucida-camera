@@ -50,9 +50,19 @@ enum SettingsStore {
         case "dualOn":     return b(s.dualOn)
         case "singleFront": return b(s.singleFront)
         case "backMain":   return b(s.backIsMain)
+        // ── A 在 1.3.0–1.5.0 新做的功能（键在 DualSettings 里已有）──
+        case "ratio":      return s.ratio                    // "16:9" / "4:3" / "1:1"
+        case "flash":      return String(s.flashMode)        // 0 关 / 1 自动 / 2 开
+        case "timerSec":   return String(s.timerSec)         // 0 / 3 / 5 / 10
+        case "grid":       return b(s.gridLines)
+        case "level":      return b(s.level)
+        case "countVibrate": return b(s.countVibrate)
         default: break
         }
         // ── 新增的键 ──
+        if id == "panelOrder" {
+            return UserDefaults.standard.string(forKey: prefix + id) ?? ""
+        }
         if let o = UserDefaults.standard.object(forKey: prefix + id) {
             let v = "\(o)"
             if valid(id, v) { return v }
@@ -83,6 +93,15 @@ enum SettingsStore {
         case "dualOn":     s.dualOn = v == "1"
         case "singleFront": s.singleFront = v == "1"
         case "backMain":   s.backIsMain = v == "1"
+        case "ratio":      if ["16:9", "4:3", "1:1"].contains(v) { s.ratio = v }
+        case "flash":      s.flashMode = Int(v) ?? 0
+        case "timerSec":   s.timerSec = Int(v) ?? 0
+        case "grid":       s.gridLines = v == "1"
+        case "level":      s.level = v == "1"
+        case "countVibrate": s.countVibrate = v == "1"
+        case "panelOrder":
+            // 面板按钮顺序：逗号分隔的 id，不是开关，不走 valid() 校验
+            UserDefaults.standard.set(v, forKey: prefix + id)
         default:
             if valid(id, v) { UserDefaults.standard.set(v, forKey: prefix + id) }
         }
@@ -120,4 +139,7 @@ extension DualSettings {
     var uiReset: Bool { get { SettingsStore.bool("uiReset") } set { SettingsStore.set("uiReset", newValue ? "1" : "0") } }
     var island: String { get { SettingsStore.get("island") } set { SettingsStore.set("island", newValue) } }
     var logOn: Bool { get { SettingsStore.bool("logOn") } set { SettingsStore.set("logOn", newValue ? "1" : "0") } }
+    var countVibrate: Bool { get { SettingsStore.bool("countVibrate") } set { SettingsStore.set("countVibrate", newValue ? "1" : "0") } }
+    /// 界面风格：frosted 毛玻璃（默认）/ liquid 液态玻璃（A 做完后接线；设置里这一项的「液态玻璃」现在灰色）
+    var glassStyle: String { get { SettingsStore.get("glassStyle") } set { SettingsStore.set("glassStyle", newValue) } }
 }

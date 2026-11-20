@@ -5,10 +5,27 @@ import UIKit
 
 let dualYellow = UIColor(red: 1, green: 0.84, blue: 0.04, alpha: 1)
 
+// MARK: - 玻璃样式（设置 → 界面风格）
+
+/// frosted = 毛玻璃；liquid = 液态玻璃（iOS 26 及以上用系统原生 UIGlassEffect，低版本用自绘折射）
+enum DualGlassStyle { case frosted, liquid }
+var dualGlassStyle: DualGlassStyle { DualSettings.shared.glassStyle == "frosted" ? .frosted : .liquid }
+
+/// 本机能不能用系统原生液态玻璃（要 iOS 26 且用新 SDK 编译）
+let dualNativeGlassAvailable: Bool = {
+    #if compiler(>=6.2)
+    if #available(iOS 26.0, *) { return true }
+    #endif
+    return false
+}()
+
+/// 现在这块玻璃是不是用系统原生在画（是的话系统自带按压动效，不再叠自己的光团）
+func dualUsesNativeGlass(_ glass: Bool) -> Bool { glass && dualGlassStyle == .liquid && dualNativeGlassAvailable }
+
 /// 系统玻璃效果（iOS 26 UIGlassEffect），拿不到时退回毛玻璃
 func dualGlassEffect(interactive: Bool = false, tint: UIColor? = nil) -> UIVisualEffect {
     #if compiler(>=6.2)
-    if #available(iOS 26.0, *) {
+    if #available(iOS 26.0, *), dualGlassStyle == .liquid {
         let e = UIGlassEffect()
         e.isInteractive = interactive
         if let t = tint { e.tintColor = t }
@@ -18,27 +35,221 @@ func dualGlassEffect(interactive: Bool = false, tint: UIColor? = nil) -> UIVisua
     return UIBlurEffect(style: .systemThinMaterialDark)
 }
 
-/// 给任意视图垫一层玻璃（或平面）背景
+/// 给任意视图垫一层玻璃（或平面）背景。
+/// 四种样子：平面 / 毛玻璃（模糊 + 高光描边）/ 系统液态玻璃 / 自绘折射液态玻璃（小控件拿取景画面做折射，大面板用毛玻璃 + 高光）。
 final class DualBackdrop: UIVisualEffectView {
+    enum Mode { case flat, frosted, native, refract }
+    private(set) var mode: Mode = .flat
     private var radius: CGFloat = 0
+    private let refractLayer = CALayer()      // 折射画面（只有 .refract 且小控件才有）
+    private let rim = GlassRim()              // 高光描边
+    private(set) var refractReady = false     // 已经有折射画面在显示
+
     init(radius: CGFloat = 0) {
         super.init(effect: nil)
         self.radius = radius
         isUserInteractionEnabled = false
         clipsToBounds = true
         layer.cornerCurve = .continuous
+        refractLayer.isHidden = true
+        refractLayer.contentsGravity = .resize
+        contentView.layer.addSublayer(refractLayer)
+        rim.isHidden = true
+        contentView.layer.addSublayer(rim)
     }
     required init?(coder: NSCoder) { fatalError() }
+    deinit { GlassRefractHub.shared.unregister(self) }
+
     /// radius < 0 = 胶囊
     var capsule = false { didSet { setNeedsLayout() } }
+
     func apply(glass: Bool, flat: UIColor = UIColor(white: 1, alpha: 0.12), interactive: Bool = false, tint: UIColor? = nil) {
-        if glass { effect = dualGlassEffect(interactive: interactive, tint: tint); backgroundColor = nil }
-        else { effect = nil; backgroundColor = flat }
+        refractReady = false; refractLayer.contents = nil; refractLayer.isHidden = true
+        if !glass {
+            mode = .flat; effect = nil; backgroundColor = flat; rim.isHidden = true
+            GlassRefractHub.shared.unregister(self)
+        } else if dualGlassStyle == .liquid && dualNativeGlassAvailable {
+            mode = .native; effect = dualGlassEffect(interactive: interactive, tint: tint); backgroundColor = nil; rim.isHidden = true
+            GlassRefractHub.shared.unregister(self)
+        } else if dualGlassStyle == .liquid {
+            mode = .refract
+            effect = UIBlurEffect(style: .systemUltraThinMaterialDark)     // 还没拿到取景画面（或控件太大）时的底
+            backgroundColor = tint ?? UIColor(white: 1, alpha: 0.05)
+            rim.isHidden = false
+            if window != nil { GlassRefractHub.shared.register(self) }
+        } else {
+            mode = .frosted
+            effect = UIBlurEffect(style: .systemThinMaterialDark)
+            backgroundColor = tint ?? UIColor(white: 1, alpha: 0.05)
+            rim.isHidden = false
+            GlassRefractHub.shared.unregister(self)
+        }
+        setNeedsLayout()
     }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if mode == .refract { if window != nil { GlassRefractHub.shared.register(self) } else { GlassRefractHub.shared.unregister(self) } }
+    }
+
+    /// 折射画面送来了（nil = 现在不折射，露出底下的模糊）
+    func showRefraction(_ img: CGImage?) {
+        guard mode == .refract else { return }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        refractLayer.contents = img
+        refractLayer.isHidden = img == nil
+        CATransaction.commit()
+        refractReady = img != nil
+    }
+
+    var cornerRadiusNow: CGFloat { capsule ? min(bounds.width, bounds.height) / 2 : radius }
+
     override func layoutSubviews() {
         super.layoutSubviews()
-        layer.cornerRadius = capsule ? min(bounds.width, bounds.height) / 2 : radius
+        layer.cornerRadius = cornerRadiusNow
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        refractLayer.frame = bounds
+        rim.frame = bounds
+        rim.update(radius: cornerRadiusNow)
+        CATransaction.commit()
     }
+}
+
+/// 玻璃的边缘高光：左上亮、右下次亮、中间几乎透明，一圈很细的描边
+final class GlassRim: CAGradientLayer {
+    private let ring = CAShapeLayer()
+    override init() {
+        super.init()
+        colors = [UIColor(white: 1, alpha: 0.85).cgColor, UIColor(white: 1, alpha: 0.10).cgColor, UIColor(white: 1, alpha: 0.0).cgColor, UIColor(white: 1, alpha: 0.38).cgColor]
+        locations = [0, 0.32, 0.62, 1]
+        startPoint = CGPoint(x: 0, y: 0); endPoint = CGPoint(x: 1, y: 1)
+        ring.fillColor = nil; ring.strokeColor = UIColor.white.cgColor; ring.lineWidth = 1.2
+        mask = ring
+    }
+    override init(layer: Any) { super.init(layer: layer) }
+    required init?(coder: NSCoder) { fatalError() }
+    func update(radius: CGFloat) {
+        ring.frame = bounds
+        ring.path = UIBezierPath(roundedRect: bounds.insetBy(dx: 0.6, dy: 0.6), cornerRadius: max(0, radius - 0.6)).cgPath
+    }
+}
+
+// MARK: - 折射渲染（液态玻璃的自绘版）
+
+/// 取景画面一份缩小的副本 + 一个定时器：每隔一会儿，给每个「小玻璃控件」从取景画面里裁出它背后的那一块，
+/// 套上玻璃透镜（CIGlassLozenge：边缘把背后的画面向内折弯），再轻轻虚化提亮，贴回控件里。
+/// 只有控件在取景框上面、尺寸不大（短边 ≤ 90）时才折射，其余情况露出底下的模糊，不会出错。
+final class GlassRefractHub {
+    static let shared = GlassRefractHub()
+    weak var stage: UIView?                                        // 取景容器；设了才会折射
+    private let views = NSHashTable<DualBackdrop>.weakObjects()
+    private var link: CADisplayLink?
+    private let lock = NSLock()
+    private var frame: CGImage?                                    // 最近一帧取景画面（缩小）
+    private var lastSubmit: CFTimeInterval = 0
+    private let renderQ = DispatchQueue(label: "lucida.glass.refract", qos: .userInitiated)
+    private let ci = CIContext(options: [.cacheIntermediates: false])
+    private var busy = false
+
+    /// 引擎线程每画好一帧调一次：这里自己限速（约 15 帧/秒），没人需要折射就立刻返回
+    func offer(_ pb: CVPixelBuffer) {
+        guard link != nil else { return }
+        let now = CACurrentMediaTime()
+        guard now - lastSubmit > 0.065 else { return }
+        lastSubmit = now
+        let w = CGFloat(CVPixelBufferGetWidth(pb)), h = CGFloat(CVPixelBufferGetHeight(pb))
+        guard w > 0, h > 0 else { return }
+        let k = min(1, 640 / max(w, h))
+        let img = CIImage(cvPixelBuffer: pb).transformed(by: CGAffineTransform(scaleX: k, y: k))
+        guard let cg = ci.createCGImage(img, from: img.extent) else { return }
+        lock.lock(); frame = cg; lock.unlock()
+    }
+
+    func register(_ v: DualBackdrop) {
+        views.add(v)
+        if link == nil {
+            let l = CADisplayLink(target: HubTarget(self), selector: #selector(HubTarget.tick))
+            l.preferredFramesPerSecond = 15
+            l.add(to: .main, forMode: .common)
+            link = l
+        }
+    }
+
+    func unregister(_ v: DualBackdrop) {
+        views.remove(v)
+        if views.count == 0 { link?.invalidate(); link = nil }
+    }
+
+    fileprivate func tick() {
+        guard !busy, let stage = stage, let win = stage.window else { return }
+        lock.lock(); let src = frame; lock.unlock()
+        guard let image = src else { return }
+        let stageRect = stage.convert(stage.bounds, to: win)
+        let scale = min(2, win.screen.scale)
+        struct Job { let view: DualBackdrop; let rect: CGRect }
+        var jobs: [Job] = []
+        for v in views.allObjects {
+            guard v.mode == .refract, v.window === win, !v.isHidden, v.alpha > 0.02, v.bounds.width > 4, v.bounds.height > 4 else { continue }
+            if min(v.bounds.width, v.bounds.height) > 90 { if v.refractReady { v.showRefraction(nil) }; continue }
+            var a: CGFloat = 1; var p: UIView? = v
+            while let q = p { a *= q.alpha; if q.isHidden { a = 0; break }; p = q.superview }
+            let r = v.convert(v.bounds, to: win)
+            if a < 0.02 || !r.intersects(stageRect) { if v.refractReady { v.showRefraction(nil) }; continue }
+            jobs.append(Job(view: v, rect: r))
+        }
+        guard !jobs.isEmpty else { return }
+        busy = true
+        let fit = stageRect
+        renderQ.async { [weak self] in
+            guard let self = self else { return }
+            var out: [(DualBackdrop, CGImage?)] = []
+            for j in jobs { out.append((j.view, self.render(image, fit: fit, rect: j.rect, scale: scale))) }
+            DispatchQueue.main.async {
+                for (v, img) in out { v.showRefraction(img) }
+                self.busy = false
+            }
+        }
+    }
+
+    /// 把「取景画面按 aspect-fit 铺进 stage」后，rect 那一块（窗口坐标）裁出来，做玻璃透镜
+    private func render(_ cg: CGImage, fit: CGRect, rect: CGRect, scale: CGFloat) -> CGImage? {
+        let iw = CGFloat(cg.width), ih = CGFloat(cg.height)
+        let s = min(fit.width / iw, fit.height / ih)
+        let ox = fit.minX + (fit.width - iw * s) / 2, oy = fit.minY + (fit.height - ih * s) / 2
+        // 图像（y 向上）→ 控件本地（y 向上，单位 = 像素）
+        let t = CGAffineTransform(a: s * scale, b: 0, c: 0, d: s * scale, tx: (ox - rect.minX) * scale, ty: (rect.maxY - oy - s * ih) * scale)
+        let W = rect.width * scale, H = rect.height * scale
+        let box = CGRect(x: 0, y: 0, width: W, height: H)
+        var img = CIImage(cgImage: cg).transformed(by: t).clampedToExtent()
+        if let blur = CIFilter(name: "CIGaussianBlur") {
+            blur.setValue(img, forKey: kCIInputImageKey); blur.setValue(2.0 * scale, forKey: kCIInputRadiusKey)
+            if let o = blur.outputImage { img = o.clampedToExtent() }
+        }
+        let horizontal = W >= H
+        let r = min(W, H) / 2
+        let p0 = horizontal ? CGPoint(x: r, y: H / 2) : CGPoint(x: W / 2, y: r)
+        let p1 = horizontal ? CGPoint(x: W - r, y: H / 2) : CGPoint(x: W / 2, y: H - r)
+        if let lens = CIFilter(name: "CIGlassLozenge") {
+            lens.setValue(img, forKey: kCIInputImageKey)
+            lens.setValue(CIVector(cgPoint: p0), forKey: "inputPoint0")
+            lens.setValue(CIVector(cgPoint: p1), forKey: "inputPoint1")
+            lens.setValue(r, forKey: kCIInputRadiusKey)
+            lens.setValue(1.35, forKey: "inputRefraction")
+            if let o = lens.outputImage { img = o.clampedToExtent() }
+        }
+        if let cc = CIFilter(name: "CIColorControls") {                       // 玻璃比背后的画面略亮、略鲜
+            cc.setValue(img, forKey: kCIInputImageKey)
+            cc.setValue(0.05, forKey: kCIInputBrightnessKey); cc.setValue(1.18, forKey: kCIInputSaturationKey)
+            if let o = cc.outputImage { img = o }
+        }
+        return ci.createCGImage(img.cropped(to: box), from: box)
+    }
+}
+
+private final class HubTarget: NSObject {
+    private weak var hub: GlassRefractHub?
+    init(_ h: GlassRefractHub) { hub = h }
+    @objc func tick() { hub?.tick() }
 }
 
 // MARK: - 分段选择
@@ -375,8 +586,8 @@ final class DualCircleButton: UIButton {
     required init?(coder: NSCoder) { fatalError() }
     private lazy var fx = LiquidTouchFX(host: self)
     override func layoutSubviews() { super.layoutSubviews(); bg.frame = bounds; sendSubviewToBack(bg); fx.layout(in: bounds) }
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesBegan(touches, with: event); if !glass, let t = touches.first { fx.began(t) } }
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesMoved(touches, with: event); if !glass, let t = touches.first { fx.moved(t) } }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesBegan(touches, with: event); if !dualUsesNativeGlass(glass), let t = touches.first { fx.began(t) } }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesMoved(touches, with: event); if !dualUsesNativeGlass(glass), let t = touches.first { fx.moved(t) } }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesEnded(touches, with: event); fx.ended() }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesCancelled(touches, with: event); fx.ended() }
     func setSymbol(_ n: String, size: CGFloat? = nil) {
@@ -415,8 +626,8 @@ final class DualPillButton: UIButton {
         sendSubviewToBack(bg)          // 文字始终在玻璃上面，不会被模糊
         fx.layout(in: bounds)
     }
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesBegan(touches, with: event); if !glass, let t = touches.first { fx.began(t) } }
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesMoved(touches, with: event); if !glass, let t = touches.first { fx.moved(t) } }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesBegan(touches, with: event); if !dualUsesNativeGlass(glass), let t = touches.first { fx.began(t) } }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesMoved(touches, with: event); if !dualUsesNativeGlass(glass), let t = touches.first { fx.moved(t) } }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesEnded(touches, with: event); fx.ended() }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesCancelled(touches, with: event); fx.ended() }
 }
