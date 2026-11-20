@@ -23,8 +23,7 @@ final class DualZoomControl: UIView {
     private let STOPS: [CGFloat] = [0.5, 1, 2, 3, 5, 10, 15, 20, 25, 30]
     private let MMS: [Double: Int] = [0.5: 13, 0.6: 16, 1: 26, 2: 52, 3: 77, 5: 120, 10: 240, 15: 360, 20: 480, 25: 600, 30: 720]
     private let LPRI = ["1", "10", "30", "5", "2", "3", "0.5", "0.6", "20", "15", "25"]
-    /// 变焦速度档（设置「变焦速度」：1× → 10 / 15 / 20 / 25 / 30× 走 34.7% 屏宽；默认 30×）
-    private var zspdMax: CGFloat { let i = DualSettings.shared.zoomSpeed; return [10, 15, 20, 25, 30][max(0, min(4, i))] }
+    private let zspdMax: CGFloat = 30           // 变焦速度档（默认 30×：1× → 30× 走 34.7% 屏宽）
     private let dH: CGFloat = 140
 
     private struct Tick { let l: CGFloat; let maj: Bool; let txt: String; let mm: Int }
@@ -120,7 +119,7 @@ final class DualZoomControl: UIView {
     private func buildTicks() {
         var maj: [CGFloat] = []
         if lo < 1 - 0.001 { maj.append(lo) }
-        for s in [1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 80, 100] as [CGFloat] where s >= lo - 0.001 && s <= hi + 0.001 { maj.append(s) }
+        for s in [1, 2, 3, 5, 10, 15, 20, 25, 30] as [CGFloat] where s >= lo - 0.001 && s <= hi + 0.001 { maj.append(s) }
         mags = maj.map { log($0) }
         ticks = []
         var v = lo
@@ -129,7 +128,7 @@ final class DualZoomControl: UIView {
             let isMaj = maj.contains { abs($0 - k) < 0.005 }
             let txt = abs(k - k.rounded()) < 0.001 ? String(Int(k.rounded())) : "\(k)"
             ticks.append(Tick(l: log(k), maj: isMaj, txt: txt, mm: MMS[Double(k)] ?? Int((26 * k).rounded())))
-            v = k < 2 ? k + 0.1 : (k < 5 ? k + 0.2 : (k < 10 ? k + 0.5 : (k < 30 ? k + 1 : (k < 50 ? k + 5 : k + 10))))
+            v = k < 2 ? k + 0.1 : (k < 5 ? k + 0.2 : (k < 10 ? k + 0.5 : (k < 30 ? k + 1 : k + 5)))
         }
     }
 

@@ -26,7 +26,7 @@ final class FunctionsViewController: UIViewController {
     private let grabber = UIView()
     private let editBtn = UIButton(type: .system)
     private let editBg = DualBackdrop()
-    private var editing = false
+    private var editingPanel = false
     private var sheetPan: UIPanGestureRecognizer!
     private var dragTile: PanelTile?
     private var curPitch: CGFloat = 112
@@ -199,7 +199,7 @@ final class FunctionsViewController: UIViewController {
         }
     }
 
-    @objc private func dimTapped() { if editing { finishEditing() } else { dismissPanel() } }
+    @objc private func dimTapped() { if editingPanel { finishEditing() } else { dismissPanel() } }
 
     /// 面板收下去再关掉；then 在关掉之后执行（比如接着打开调色盘 / 设置）
     private func dismissPanel(then: (() -> Void)? = nil) {
@@ -217,8 +217,8 @@ final class FunctionsViewController: UIViewController {
     // MARK: - 编辑排序
 
     @objc private func editTapped() {
-        if editing { finishEditing(); return }
-        editing = true
+        if editingPanel { finishEditing(); return }
+        editingPanel = true
         editBtn.setTitle("完成", for: .normal); editBtn.setTitleColor(dualYellow, for: .normal)
         sheetPan.isEnabled = false; editPress.isEnabled = true
         for (i, t) in tiles.enumerated() { wiggle(t, phase: Double(i)) }
@@ -228,7 +228,7 @@ final class FunctionsViewController: UIViewController {
     }
 
     private func finishEditing() {
-        editing = false
+        editingPanel = false
         editBtn.setTitle("编辑", for: .normal); editBtn.setTitleColor(.white, for: .normal)
         sheetPan.isEnabled = true; editPress.isEnabled = false
         tiles.forEach { $0.layer.removeAnimation(forKey: "wiggle"); $0.transform = .identity }
@@ -276,7 +276,7 @@ final class FunctionsViewController: UIViewController {
     }
 
     @objc private func tileTapped(_ t: UIControl) {
-        guard !closing, !editing, let tile = t as? PanelTile else { return }
+        guard !closing, !editingPanel, let tile = t as? PanelTile else { return }
         if tile.item.state == .soon { showToast(SettingsRegistry.panelSoonToast); return }
         perform(tile)
     }
