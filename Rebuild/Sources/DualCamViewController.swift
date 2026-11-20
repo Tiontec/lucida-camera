@@ -248,7 +248,6 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private func buildUI() {
         stage.backgroundColor = .black; stage.clipsToBounds = true
         stage.layer.addSublayer(engine.previewLayer)
-        GlassRefractHub.shared.stage = stage
         view.addSubview(stage)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panStage(_:))); pan.delegate = self
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapStage(_:)))

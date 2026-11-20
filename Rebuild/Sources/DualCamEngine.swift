@@ -177,8 +177,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         backVirtual = false
         hasUltraWide = Self.lensWorksWithFront(.builtInUltraWideCamera)
         hasTele = Self.lensWorksWithFront(.builtInTelephotoCamera)
-        if hasTele { teleRatio = Self.teleOverride() ?? Self.computeTeleRatio() }
-        if Self.uwOff() { hasUltraWide = false }
+        if hasTele { teleRatio = Self.computeTeleRatio() }
         var w = want
         if w.ultraWide && !hasUltraWide { w.ultraWide = false }
         if w.tele && !hasTele { w.tele = false }
@@ -235,8 +234,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             hasTele = consts.contains(.builtInTelephotoCamera)
             let sw = v.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
             virtualWideAt = hasUltraWide ? (sw.first ?? 2) : 1
-            if let t = Self.teleOverride() ?? Self.computeTeleRatioOptional() { teleRatio = t }
-            if Self.uwOff() { hasUltraWide = false }
+            if let t = Self.computeTeleRatioOptional() { teleRatio = t }
             var wv = want; wv.ultraWide = false; wv.tele = false
             backDevice = v; frontDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
             do { return try configureSingleLoop(wv, dev: v, wantAudio: wantAudio, virtual: true) }
@@ -246,10 +244,9 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         let uwDev = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back)
         hasUltraWide = uwDev != nil
         hasTele = AVCaptureDevice.default(.builtInTelephotoCamera, for: .video, position: .back) != nil
-        if hasTele { teleRatio = Self.teleOverride() ?? Self.computeTeleRatio() }
-        if Self.uwOff() { hasUltraWide = false }
+        if hasTele { teleRatio = Self.computeTeleRatio() }
         var w = want
-        if (w.ultraWide && !hasUltraWide) || useFront { w.ultraWide = false }
+        if (w.ultraWide && uwDev == nil) || useFront { w.ultraWide = false }
         if (w.tele && !hasTele) || useFront { w.tele = false }
         if w.tele { w.ultraWide = false }
         let backType: AVCaptureDevice.DeviceType = w.tele ? .builtInTelephotoCamera : (w.ultraWide ? .builtInUltraWideCamera : .builtInWideAngleCamera)
@@ -339,16 +336,6 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         let r = tan(fw) / tan(ft)
         return CGFloat(max(2, (r * 2).rounded() / 2))
     }
-    /// 设置「长焦镜头倍数」：auto = 按视场角自动算；否则用设置的数
-    private static func teleOverride() -> CGFloat? {
-        let v = DualSettings.shared.teleScale
-        return v == "auto" ? nil : Double(v).map { CGFloat($0) }
-    }
-    /// 设置「超广角倍数」= 关闭 0.5×
-    /// 设置「超广角倍数」开启 0.6× 时，转盘最小倍数是 0.6（用超广角裁出来）
-    private static func uwMin() -> CGFloat { Double(DualSettings.shared.uwScale).map { CGFloat($0) } ?? 0.5 }
-    private static func uwOff() -> Bool { DualSettings.shared.uwScale == "off" }
-
     private static func computeTeleRatio() -> CGFloat { computeTeleRatioOptional() ?? 3 }
 
     private static func lensWorksWithFront(_ type: AVCaptureDevice.DeviceType) -> Bool {
@@ -492,12 +479,12 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         if back, backVirtual, let d = backDevice {
             let lo = max(0.5, d.minAvailableVideoZoomFactor / virtualWideAt)
             let hi = min(CGFloat(max(30, DualSettings.shared.zoomRange)), d.maxAvailableVideoZoomFactor / virtualWideAt)
-            return (hasUltraWide ? max(lo, Self.uwMin()) : 1, max(1, hi))
+            return (hasUltraWide ? lo : 1, max(1, hi))
         }
         if back {
             let wide = backDevice?.deviceType == .builtInWideAngleCamera ? backDevice : AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
             let hi = min(CGFloat(max(30, DualSettings.shared.zoomRange)), wide?.activeFormat.videoMaxZoomFactor ?? 10)
-            return (hasUltraWide ? Self.uwMin() : 1, max(1, hi))
+            return (hasUltraWide ? 0.5 : 1, max(1, hi))
         }
         let hi = min(10, frontDevice?.activeFormat.videoMaxZoomFactor ?? 1)
         return (1, max(1, hi))
@@ -829,7 +816,6 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         }
         if previewLayer.status == .failed { previewLayer.flush() }
         previewLayer.enqueue(sample)
-        GlassRefractHub.shared.offer(dst)          // 液态玻璃的折射用（没有玻璃控件在折射时立刻返回，不花时间）
     }
 
     // MARK: - 合成
