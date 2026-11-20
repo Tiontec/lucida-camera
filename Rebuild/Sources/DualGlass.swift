@@ -276,6 +276,85 @@ final class GlassSlider: UIControl {
     override func cancelTracking(with e: UIEvent?) { endTracking(nil, with: e) }
 }
 
+// MARK: - 液态按压效果（按下有一团光跟着手指，按住拖动会向手指的方向拉伸，松手弹回）
+
+/// 挂在任意按钮上：touchesBegan/Moved/Ended/Cancelled 里转发进来即可。
+/// 静息 = 原样；按下 = 光团淡入并跟手；拖动 = 朝手指方向拉长（最多约 35%）并轻微跟随；松手 = 弹簧回弹。
+final class LiquidTouchFX {
+    private weak var host: UIView?
+    private let holder = UIView()
+    private let glow = CAGradientLayer()
+    private var down = false
+
+    init(host: UIView) {
+        self.host = host
+        holder.isUserInteractionEnabled = false
+        holder.clipsToBounds = true
+        holder.alpha = 0
+        glow.type = .radial
+        glow.colors = [UIColor(white: 1, alpha: 0.62).cgColor, UIColor(white: 1, alpha: 0.18).cgColor, UIColor(white: 1, alpha: 0).cgColor]
+        glow.locations = [0, 0.45, 1]
+        glow.startPoint = CGPoint(x: 0.5, y: 0.5); glow.endPoint = CGPoint(x: 1, y: 1)
+        holder.layer.addSublayer(glow)
+    }
+
+    /// 布局后调用（按钮尺寸变了要更新圆角）
+    func layout(in bounds: CGRect, capsule: Bool = true) {
+        guard let h = host else { return }
+        if holder.superview == nil { h.insertSubview(holder, at: min(1, h.subviews.count)) }
+        holder.frame = bounds
+        holder.layer.cornerRadius = capsule ? min(bounds.width, bounds.height) / 2 : 0
+        holder.layer.cornerCurve = .continuous
+        let d = max(bounds.width, bounds.height) * 1.25
+        glow.bounds = CGRect(x: 0, y: 0, width: d, height: d)
+    }
+
+    func began(_ t: UITouch) {
+        guard let h = host else { return }
+        down = true
+        moveGlow(t.location(in: h), animated: false)
+        UIView.animate(withDuration: 0.18, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { self.holder.alpha = 1 }
+        stretch(t.location(in: h), spring: true)
+    }
+
+    func moved(_ t: UITouch) {
+        guard let h = host, down else { return }
+        let p = t.location(in: h)
+        moveGlow(p, animated: false)
+        stretch(p, spring: false)
+    }
+
+    func ended() {
+        guard let h = host else { return }
+        down = false
+        UIView.animate(withDuration: 0.35, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { self.holder.alpha = 0 }
+        UIView.animate(withDuration: 0.6, delay: 0, usingSpringWithDamping: 0.38, initialSpringVelocity: 0.8,
+                       options: [.allowUserInteraction, .beginFromCurrentState]) { h.transform = .identity }
+    }
+
+    private func moveGlow(_ p: CGPoint, animated: Bool) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        glow.position = p
+        CATransaction.commit()
+    }
+
+    private func stretch(_ p: CGPoint, spring: Bool) {
+        guard let h = host else { return }
+        let w = max(1, h.bounds.width), hh = max(1, h.bounds.height)
+        let dx = (p.x - w / 2) / w, dy = (p.y - hh / 2) / hh               // -0.5…0.5（手指跑到外面可以更大）
+        let cx = max(-1.2, min(1.2, dx)), cy = max(-1.2, min(1.2, dy))
+        let sx = 1 + 0.06 + abs(cx) * 0.3, sy = 1 + 0.06 + abs(cy) * 0.3   // 按下就先涨一点，拖得越远拉得越长
+        var tf = CGAffineTransform(translationX: cx * w * 0.16, y: cy * hh * 0.16)
+        tf = tf.scaledBy(x: sx, y: sy)
+        if spring {
+            UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.5,
+                           options: [.allowUserInteraction, .beginFromCurrentState]) { h.transform = tf }
+        } else {
+            UIView.animate(withDuration: 0.08, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState, .curveLinear]) { h.transform = tf }
+        }
+    }
+}
+
 // MARK: - 圆形按钮（图标 / 文字，玻璃或平面）
 
 final class DualCircleButton: UIButton {
@@ -294,7 +373,12 @@ final class DualCircleButton: UIButton {
         setGlass(false)
     }
     required init?(coder: NSCoder) { fatalError() }
-    override func layoutSubviews() { super.layoutSubviews(); bg.frame = bounds; sendSubviewToBack(bg) }
+    private lazy var fx = LiquidTouchFX(host: self)
+    override func layoutSubviews() { super.layoutSubviews(); bg.frame = bounds; sendSubviewToBack(bg); fx.layout(in: bounds) }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesBegan(touches, with: event); if !glass, let t = touches.first { fx.began(t) } }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesMoved(touches, with: event); if !glass, let t = touches.first { fx.moved(t) } }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesEnded(touches, with: event); fx.ended() }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesCancelled(touches, with: event); fx.ended() }
     func setSymbol(_ n: String, size: CGFloat? = nil) {
         let s = size ?? bounds.width
         setImage(UIImage(systemName: n, withConfiguration: UIImage.SymbolConfiguration(pointSize: s * 0.42, weight: .semibold)), for: .normal)
@@ -324,11 +408,17 @@ final class DualPillButton: UIButton {
         glass = on
         bg.apply(glass: on, flat: UIColor(white: 1, alpha: 0.16), interactive: true)
     }
+    private lazy var fx = LiquidTouchFX(host: self)
     override func layoutSubviews() {
         super.layoutSubviews()
         bg.frame = bounds
         sendSubviewToBack(bg)          // 文字始终在玻璃上面，不会被模糊
+        fx.layout(in: bounds)
     }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesBegan(touches, with: event); if !glass, let t = touches.first { fx.began(t) } }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesMoved(touches, with: event); if !glass, let t = touches.first { fx.moved(t) } }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesEnded(touches, with: event); fx.ended() }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesCancelled(touches, with: event); fx.ended() }
 }
 
 // MARK: - 提示条（放在取景框左上角；开液态玻璃时是玻璃，关闭时是普通深色面板）

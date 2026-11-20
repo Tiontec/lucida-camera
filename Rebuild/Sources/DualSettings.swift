@@ -57,6 +57,8 @@ final class DualSettings {
     /// 取景网格线（三分线）
     var gridLines: Bool { get { d.bool(forKey: key("grid")) } set { d.set(newValue, forKey: key("grid")) } }
     /// 水平仪
+    /// 多功能面板按钮顺序（逗号分隔的 PanelItem.id）；空 = 出厂顺序
+    var panelOrder: [String] { get { (d.string(forKey: key("panelOrder")) ?? "").split(separator: ",").map(String.init) } set { d.set(newValue.joined(separator: ","), forKey: key("panelOrder")) } }
     /// 倒计时每秒震动一下（默认开）
     var countVibrate: Bool { get { d.object(forKey: key("countVibrate")) as? Bool ?? true } set { d.set(newValue, forKey: key("countVibrate")) } }
     var level: Bool { get { d.bool(forKey: key("level")) } set { d.set(newValue, forKey: key("level")) } }

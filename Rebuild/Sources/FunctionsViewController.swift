@@ -24,7 +24,13 @@ final class FunctionsViewController: UIViewController {
     private let sheet = UIView()
     private let sheetBg = DualBackdrop()
     private let grabber = UIView()
-    private var gear: PanelCircle!
+    private let editBtn = UIButton(type: .system)
+    private let editBg = DualBackdrop()
+    private var editing = false
+    private var sheetPan: UIPanGestureRecognizer!
+    private var dragTile: PanelTile?
+    private var curPitch: CGFloat = 112
+    private let editPress = UILongPressGestureRecognizer()
     private let content = UIView()
     private var tiles: [PanelTile] = []
     private let toastBox = UIView()
@@ -65,13 +71,18 @@ final class FunctionsViewController: UIViewController {
         grabber.layer.cornerRadius = 2.5
         sheet.addSubview(grabber)
 
-        gear = PanelCircle(symbols: ["gearshape.fill", "gearshape"], pointSize: 18, glass: st.glass)
-        gear.accessibilityLabel = "设置"
-        gear.addTarget(self, action: #selector(gearTapped), for: .touchUpInside)
-        sheet.addSubview(gear)
+        // 右上角「编辑」⇄「完成」：编辑时可以长按拖动图标排序，点「完成」保存顺序
+        editBg.capsule = true
+        editBg.apply(glass: st.glass, flat: UIColor(white: 1, alpha: 0.16), interactive: true)
+        sheet.addSubview(editBg)
+        editBtn.setTitle("编辑", for: .normal)
+        editBtn.setTitleColor(.white, for: .normal)
+        editBtn.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        editBtn.addTarget(self, action: #selector(editTapped), for: .touchUpInside)
+        sheet.addSubview(editBtn)
 
         sheet.addSubview(content)
-        for it in PanelRegistry.items {
+        for it in PanelRegistry.ordered() {
             let t = PanelTile(item: it, glass: st.glass)
             if it.action == .toggleDual { t.active = dualOn }
             if it.action == .cycleFlash { t.active = flashMode != 0 }
@@ -80,7 +91,12 @@ final class FunctionsViewController: UIViewController {
             content.addSubview(t)
             tiles.append(t)
         }
-        sheet.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(pan(_:))))
+        sheetPan = UIPanGestureRecognizer(target: self, action: #selector(pan(_:)))
+        sheet.addGestureRecognizer(sheetPan)
+        editPress.addTarget(self, action: #selector(editPressed(_:)))
+        editPress.minimumPressDuration = 0.22
+        editPress.isEnabled = false
+        content.addGestureRecognizer(editPress)
 
         toastBox.alpha = 0; toastBox.isUserInteractionEnabled = false
         toastBg.capsule = true
@@ -130,15 +146,17 @@ final class FunctionsViewController: UIViewController {
         sheet.frame = CGRect(x: sideMargin, y: b.height - bottomMargin - h, width: w, height: h)
         sheetBg.frame = sheet.bounds
         grabber.frame = CGRect(x: (w - 40) / 2, y: 8, width: 40, height: 5)
-        gear.frame = CGRect(x: w - 14 - 36, y: 4, width: 36, height: 36)
+        editBg.frame = CGRect(x: w - 14 - 64, y: 6, width: 64, height: 32)
+        editBtn.frame = editBg.frame
         content.frame = CGRect(x: 0, y: headerH, width: w, height: max(0, h - headerH))
         let span = max(1, hMax - hMin)
         let t = max(0, min(1, (h - hMin) / span))
         let pMax = max(minPitch, (hMax - headerH - 20) / 4)
         let pitch = minPitch + (pMax - minPitch) * t
+        curPitch = pitch
         let colW = w / 3
         let tileH: CGFloat = 68 + 30
-        for (i, tile) in tiles.enumerated() {
+        for (i, tile) in tiles.enumerated() where tile !== dragTile {
             tile.bounds = CGRect(x: 0, y: 0, width: colW, height: tileH)
             tile.center = CGPoint(x: colW * (CGFloat(i % 3) + 0.5), y: 8 + pitch * CGFloat(i / 3) + tileH / 2)
         }
@@ -181,7 +199,7 @@ final class FunctionsViewController: UIViewController {
         }
     }
 
-    @objc private func dimTapped() { dismissPanel() }
+    @objc private func dimTapped() { if editing { finishEditing() } else { dismissPanel() } }
 
     /// 面板收下去再关掉；then 在关掉之后执行（比如接着打开调色盘 / 设置）
     private func dismissPanel(then: (() -> Void)? = nil) {
@@ -196,13 +214,69 @@ final class FunctionsViewController: UIViewController {
 
     // MARK: - 点击
 
-    @objc private func gearTapped() {
-        let cb = onOpenSettings
-        dismissPanel { cb?() }
+    // MARK: - 编辑排序
+
+    @objc private func editTapped() {
+        if editing { finishEditing(); return }
+        editing = true
+        editBtn.setTitle("完成", for: .normal); editBtn.setTitleColor(dualYellow, for: .normal)
+        sheetPan.isEnabled = false; editPress.isEnabled = true
+        for (i, t) in tiles.enumerated() { wiggle(t, phase: Double(i)) }
+        if sheetH < hMax - 1 {
+            UIView.animate(withDuration: 0.42, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { self.setHeight(self.hMax) }
+        }
+    }
+
+    private func finishEditing() {
+        editing = false
+        editBtn.setTitle("编辑", for: .normal); editBtn.setTitleColor(.white, for: .normal)
+        sheetPan.isEnabled = true; editPress.isEnabled = false
+        tiles.forEach { $0.layer.removeAnimation(forKey: "wiggle"); $0.transform = .identity }
+        st.panelOrder = tiles.map { $0.item.id }
+    }
+
+    private func wiggle(_ t: PanelTile, phase: Double) {
+        let a = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        a.values = [-0.035, 0.035, -0.035]
+        a.duration = 0.28 + 0.02 * (phase.truncatingRemainder(dividingBy: 3))
+        a.repeatCount = .infinity
+        t.layer.add(a, forKey: "wiggle")
+    }
+
+    @objc private func editPressed(_ g: UILongPressGestureRecognizer) {
+        let p = g.location(in: content)
+        switch g.state {
+        case .began:
+            guard let t = tiles.first(where: { $0.frame.contains(p) }) else { return }
+            dragTile = t
+            t.layer.removeAnimation(forKey: "wiggle")
+            content.bringSubviewToFront(t)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            UIView.animate(withDuration: 0.2) { t.transform = CGAffineTransform(scaleX: 1.12, y: 1.12); t.alpha = 0.92 }
+        case .changed:
+            guard let t = dragTile, let cur = tiles.firstIndex(where: { $0 === t }) else { return }
+            t.center = p
+            let colW = content.bounds.width / 3
+            let col = max(0, min(2, Int(p.x / colW)))
+            let row = max(0, Int((p.y - 8) / max(1, curPitch)))
+            let idx = min(tiles.count - 1, row * 3 + col)
+            if idx != cur {
+                tiles.remove(at: cur); tiles.insert(t, at: idx)
+                UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { self.setHeight(self.sheetH) }
+            }
+        case .ended, .cancelled, .failed:
+            guard let t = dragTile else { return }
+            dragTile = nil
+            UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0, options: [.allowUserInteraction]) {
+                t.transform = .identity; t.alpha = t.item.state == .soon ? 0.38 : 1; self.setHeight(self.sheetH)
+            }
+            wiggle(t, phase: 1)
+        default: break
+        }
     }
 
     @objc private func tileTapped(_ t: UIControl) {
-        guard !closing, let tile = t as? PanelTile else { return }
+        guard !closing, !editing, let tile = t as? PanelTile else { return }
         if tile.item.state == .soon { showToast(SettingsRegistry.panelSoonToast); return }
         perform(tile)
     }

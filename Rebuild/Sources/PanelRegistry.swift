@@ -31,6 +31,16 @@ enum PanelRegistry {
         PanelItem(id: "cine", title: "电影模式", symbols: ["film"], state: .soon, action: .none),
     ]
 
+    /// 按用户排好的顺序返回按钮：存档里有的按存档排，新增的按钮追加在末尾，已经不存在的丢掉
+    static func ordered() -> [PanelItem] {
+        let saved = DualSettings.shared.panelOrder
+        if saved.isEmpty { return items }
+        var out: [PanelItem] = []
+        for id in saved { if let it = items.first(where: { $0.id == id }), !out.contains(where: { $0.id == id }) { out.append(it) } }
+        for it in items where !out.contains(where: { $0.id == it.id }) { out.append(it) }
+        return out
+    }
+
     /// 按顺序找系统里存在的第一个符号
     static func symbol(_ names: [String], size: CGFloat, weight: UIImage.SymbolWeight = .regular) -> UIImage? {
         let cfg = UIImage.SymbolConfiguration(pointSize: size, weight: weight)
