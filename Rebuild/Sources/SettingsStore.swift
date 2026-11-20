@@ -139,7 +139,6 @@ extension DualSettings {
     var uiReset: Bool { get { SettingsStore.bool("uiReset") } set { SettingsStore.set("uiReset", newValue ? "1" : "0") } }
     var island: String { get { SettingsStore.get("island") } set { SettingsStore.set("island", newValue) } }
     var logOn: Bool { get { SettingsStore.bool("logOn") } set { SettingsStore.set("logOn", newValue ? "1" : "0") } }
-    var countVibrate: Bool { get { SettingsStore.bool("countVibrate") } set { SettingsStore.set("countVibrate", newValue ? "1" : "0") } }
     /// 界面风格：frosted 毛玻璃（默认）/ liquid 液态玻璃（A 做完后接线；设置里这一项的「液态玻璃」现在灰色）
     var glassStyle: String { get { SettingsStore.get("glassStyle") } set { SettingsStore.set("glassStyle", newValue) } }
 }
