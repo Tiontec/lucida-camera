@@ -45,6 +45,14 @@ final class DualSettingsViewController: UIViewController {
         addSeg("实况时长（快门前 1.5 秒）", durs.map { "\(Int($0)) 秒" }, durs.firstIndex(of: st.liveDur) ?? 0) { [st] i in st.liveDur = durs[i] }
         addSeg("实况保存方式", ["只存实况", "实况 + 静态照片"], st.liveAlsoStill ? 1 : 0) { [st] i in st.liveAlsoStill = i == 1 }
         addSwitch("实况计时显示", "拍实况时在取景框左上角显示已经拍到第几秒、有没有拍完", st.liveTimer) { [st] v in st.liveTimer = v }
+        // 单摄（只开一颗摄像头）的实况设置，和上面双摄的各自独立
+        let sf: [Int] = [15, 30, 60], sd: [Double] = [3, 5, 6, 8]
+        addSeg("单摄 · 实况帧率", sf.map { "\($0) 帧" }, sf.firstIndex(of: st.sLiveFps) ?? 1) { [st] i in st.sLiveFps = sf[i] }
+        addSeg("单摄 · 实况时长", sd.map { "\(Int($0)) 秒" }, sd.firstIndex(of: st.sLiveDur) ?? 0) { [st] i in st.sLiveDur = sd[i] }
+        addSeg("单摄 · 实况保存方式", ["只存实况", "实况 + 静态照片"], st.sLiveStill ? 1 : 0) { [st] i in st.sLiveStill = i == 1 }
+        addSwitch("单摄 · 实况计时显示", nil, st.sLiveTimer) { [st] v in st.sLiveTimer = v }
+        let zr: [Int] = [30, 50, 80, 100]
+        addSeg("变焦倍率上限（重启相机后生效）", zr.map { "\($0)×" }, zr.firstIndex(of: st.zoomRange) ?? 0) { [st] i in st.zoomRange = zr[i] }
         addSwitch("片门全开", "前后摄像头都用 4:3 整块传感器规格，成品 3:4；帧率尽量保持所选值", st.fullSensor) { [weak self] v in
             self?.st.fullSensor = v; self?.onChange?(true) }
         addSwitch("满帧画面运行录制", "开：不因手机发烫自动降帧，取景和录制都按所选帧率；关：发烫时自动降到 30 帧、60 帧取景隔帧刷新，降低功耗，保证录完的视频流畅", st.fullRate) { [weak self] v in
