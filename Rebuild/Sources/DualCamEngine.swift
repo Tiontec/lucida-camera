@@ -16,7 +16,7 @@ struct DualLayout {
     enum Style { case pip, split }
     var style: Style = .pip
     var backIsMain = true
-    var mirrorFront = true
+    var mirrorFront = false
     var pipX: CGFloat = 1      // 0…1：小窗在可移动范围里的水平位置（1 = 最右）
     var pipY: CGFloat = 0      // 0…1：垂直位置（0 = 最上）
     var pipW: CGFloat = 0.32   // 小窗宽度 / 画面宽度
@@ -50,6 +50,7 @@ struct DualSpec: Equatable {
     var fps = 30            // 24 / 30 / 60
     var full = false        // 片门全开
     var ultraWide = false   // 后置用超广角镜头
+    var tele = false        // 后置用长焦镜头
     var aspect: CGFloat = 9.0 / 16.0   // 成品画面宽 / 高（竖屏），和取景框一致；片门全开固定 3:4
 
     var bound: Int32 { res == 720 ? 1280 : (res == 1080 ? 1920 : 4300) }
@@ -68,6 +69,11 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private let audioQueue = DispatchQueue(label: "lucida.dual.audio", qos: .userInitiated)
     /// 前置画面单独一条队列：后置那条队列在「合成 + 调色」时会被占住，前置帧排不上队就被系统当成迟到丢掉，小窗里的前置画面就卡
     private let frontQueue = DispatchQueue(label: "lucida.dual.front", qos: .userInitiated)
+    /// 拍照合成 + 写文件单独一条队列：以前占着 dataQueue，连拍时取景帧和实况帧全被堵住，摄像头缓冲池耗尽后画面就死了
+    private let photoQueue = DispatchQueue(label: "lucida.dual.photo", qos: .userInitiated)
+    private var _photoPending = 0
+    /// 还没处理完的照片张数（连拍太快时界面据此拦住，别无限堆）
+    var photoPending: Int { lock.lock(); defer { lock.unlock() }; return _photoPending }
     private let writeQueue = DispatchQueue(label: "lucida.dual.write", qos: .utility)
 
     /// 预览显示层（界面把它放进取景区）
@@ -91,6 +97,12 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private(set) var info = ""
     /// 这台设备能不能「超广角 + 前置」同时工作
     private(set) var hasUltraWide = false
+    private(set) var hasTele = false
+    /// 长焦相对广角的倍数（iPhone 14 Pro = 3；用视场角算出来，取最近的 0.5）
+    private(set) var teleRatio: CGFloat = 3
+    /// 单摄后置用「虚拟多摄像头」（三摄 / 双广角 / 双摄）：镜头在系统里无缝切换，不用重配会话，变焦丝滑不转圈
+    private(set) var backVirtual = false
+    private var virtualWideAt: CGFloat = 1
 
     // 每个摄像头各记各的变焦倍数（等效倍数：后置 1× = 广角；超广角 0.5×）
     private(set) var backZoom: CGFloat = 1
@@ -162,10 +174,15 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         guard AVCaptureMultiCamSession.isMultiCamSupported else {
             throw DualError.unsupported("这台 iPhone 不支持前后摄像头同时工作（需要 iPhone XS / XR 及以后的机型）")
         }
-        hasUltraWide = Self.ultraWideWorksWithFront()
+        backVirtual = false
+        hasUltraWide = Self.lensWorksWithFront(.builtInUltraWideCamera)
+        hasTele = Self.lensWorksWithFront(.builtInTelephotoCamera)
+        if hasTele { teleRatio = Self.computeTeleRatio() }
         var w = want
         if w.ultraWide && !hasUltraWide { w.ultraWide = false }
-        let backType: AVCaptureDevice.DeviceType = w.ultraWide ? .builtInUltraWideCamera : .builtInWideAngleCamera
+        if w.tele && !hasTele { w.tele = false }
+        if w.tele { w.ultraWide = false }
+        let backType: AVCaptureDevice.DeviceType = w.tele ? .builtInTelephotoCamera : (w.ultraWide ? .builtInUltraWideCamera : .builtInWideAngleCamera)
         guard let back = AVCaptureDevice.default(backType, for: .video, position: .back),
               let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
             throw DualError.unsupported("没有找到前置或后置摄像头")
@@ -190,6 +207,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                         watchPressure()
                         backZoom = 1; frontZoom = 1
                         if s.ultraWide { backZoom = 0.5 }
+                        if s.tele { backZoom = teleRatio }
                         if s == w { return "" }
                         var parts: [String] = []
                         if s.res != w.res { parts.append("分辨率 \(w.res == 2160 ? "4K" : "\(w.res)p") → \(s.res == 2160 ? "4K" : "\(s.res)p")") }
@@ -208,15 +226,38 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     /// 单摄：普通会话，一颗摄像头（后置 / 前置）。规格逐级降（帧率 → 分辨率），一般不会失败。
     private func configureSingle(_ want: DualSpec, wantAudio: Bool) throws -> String {
         let useFront = singleFront
+        // 先试虚拟多摄像头（后置）；任何一步不行就退回单颗物理镜头的老办法
+        if !useFront, let v = Self.virtualBackDevice() {
+            backVirtual = true
+            let consts = v.constituentDevices.map { $0.deviceType }
+            hasUltraWide = consts.contains(.builtInUltraWideCamera)
+            hasTele = consts.contains(.builtInTelephotoCamera)
+            let sw = v.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
+            virtualWideAt = hasUltraWide ? (sw.first ?? 2) : 1
+            if let t = Self.computeTeleRatioOptional() { teleRatio = t }
+            var wv = want; wv.ultraWide = false; wv.tele = false
+            backDevice = v; frontDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+            do { return try configureSingleLoop(wv, dev: v, wantAudio: wantAudio, virtual: true) }
+            catch { AppLog.warn("变焦", "虚拟多摄像头配置失败，退回单镜头：\(error)"); backVirtual = false }
+        }
+        backVirtual = false
         let uwDev = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back)
         hasUltraWide = uwDev != nil
+        hasTele = AVCaptureDevice.default(.builtInTelephotoCamera, for: .video, position: .back) != nil
+        if hasTele { teleRatio = Self.computeTeleRatio() }
         var w = want
         if (w.ultraWide && uwDev == nil) || useFront { w.ultraWide = false }
-        let backType: AVCaptureDevice.DeviceType = w.ultraWide ? .builtInUltraWideCamera : .builtInWideAngleCamera
+        if (w.tele && !hasTele) || useFront { w.tele = false }
+        if w.tele { w.ultraWide = false }
+        let backType: AVCaptureDevice.DeviceType = w.tele ? .builtInTelephotoCamera : (w.ultraWide ? .builtInUltraWideCamera : .builtInWideAngleCamera)
         let backDev = AVCaptureDevice.default(backType, for: .video, position: .back)
         let frontDev = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
         backDevice = backDev; frontDevice = frontDev
         guard let dev = useFront ? frontDev : backDev else { throw DualError.unsupported(useFront ? "没有找到前置摄像头" : "没有找到后置摄像头") }
+        return try configureSingleLoop(w, dev: dev, wantAudio: wantAudio, virtual: false)
+    }
+
+    private func configureSingleLoop(_ w: DualSpec, dev: AVCaptureDevice, wantAudio: Bool, virtual: Bool) throws -> String {
         var resList = [w.res]
         for r in [2160, 1080, 720] where r < w.res { resList.append(r) }
         var lastWhy = "摄像头没有可用的规格"
@@ -233,6 +274,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                     spec = s
                     backZoom = 1; frontZoom = 1
                     if s.ultraWide { backZoom = 0.5 }
+                    if s.tele { backZoom = teleRatio }
+                    if virtual { applyZoom(back: true) }          // 虚拟镜头默认是超广角视野，要先拨到 1×
                     if s == w { return "" }
                     var parts: [String] = []
                     if s.res != w.res { parts.append("分辨率 \(w.res == 2160 ? "4K" : "\(w.res)p") → \(s.res == 2160 ? "4K" : "\(s.res)p")") }
@@ -278,10 +321,27 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         info = "\(singleFront ? "前置" : "后置") \(CMVideoFormatDescriptionGetDimensions(fmt.formatDescription).width)×\(CMVideoFormatDescriptionGetDimensions(fmt.formatDescription).height)@\(s.fps)"
     }
 
-    private static func ultraWideWorksWithFront() -> Bool {
-        guard let uw = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back),
+    private static func virtualBackDevice() -> AVCaptureDevice? {
+        for t in [AVCaptureDevice.DeviceType.builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera] {
+            if let d = AVCaptureDevice.default(t, for: .video, position: .back) { return d }
+        }
+        return nil
+    }
+
+    private static func computeTeleRatioOptional() -> CGFloat? {
+        guard let w = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let t = AVCaptureDevice.default(.builtInTelephotoCamera, for: .video, position: .back) else { return nil }
+        let fw = Double(w.activeFormat.videoFieldOfView) * .pi / 360, ft = Double(t.activeFormat.videoFieldOfView) * .pi / 360
+        guard ft > 0.01 else { return nil }
+        let r = tan(fw) / tan(ft)
+        return CGFloat(max(2, (r * 2).rounded() / 2))
+    }
+    private static func computeTeleRatio() -> CGFloat { computeTeleRatioOptional() ?? 3 }
+
+    private static func lensWorksWithFront(_ type: AVCaptureDevice.DeviceType) -> Bool {
+        guard let uw = AVCaptureDevice.default(type, for: .video, position: .back),
               let fr = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else { return false }
-        let ds = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera],
+        let ds = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera],
                                                   mediaType: .video, position: .unspecified)
         return ds.supportedMultiCamDeviceSets.contains { $0.contains(uw) && $0.contains(fr) }
     }
@@ -416,6 +476,11 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     // MARK: - 变焦（等效倍数：后置 1× = 广角，0.5× = 超广角）
 
     func zoomRange(back: Bool) -> (CGFloat, CGFloat) {
+        if back, backVirtual, let d = backDevice {
+            let lo = max(0.5, d.minAvailableVideoZoomFactor / virtualWideAt)
+            let hi = min(30, d.maxAvailableVideoZoomFactor / virtualWideAt)
+            return (hasUltraWide ? lo : 1, max(1, hi))
+        }
         if back {
             let wide = backDevice?.deviceType == .builtInWideAngleCamera ? backDevice : AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
             let hi = min(30, wide?.activeFormat.videoMaxZoomFactor ?? 10)
@@ -440,7 +505,10 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         var vz: CGFloat
         if back {
             let ez = backZoom
-            vz = d.deviceType == .builtInUltraWideCamera ? ez / 0.5 : ez
+            if backVirtual { vz = ez * virtualWideAt }
+            else if d.deviceType == .builtInUltraWideCamera { vz = ez / 0.5 }
+            else if d.deviceType == .builtInTelephotoCamera { vz = ez / teleRatio }
+            else { vz = ez }
         } else { vz = frontZoom }
         let hi = min(d.activeFormat.videoMaxZoomFactor, d.maxAvailableVideoZoomFactor)
         vz = min(hi, max(d.minAvailableVideoZoomFactor, vz))
@@ -453,9 +521,23 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     /// 当前后置镜头能不能表达这个倍数；不能就说明需要换镜头
     func needsLensSwitch(forBackZoom ez: CGFloat) -> Bool {
-        guard hasUltraWide else { return false }
-        let onUW = backDevice?.deviceType == .builtInUltraWideCamera
-        return (ez < 1 && !onUW) || (ez >= 1 && onUW)
+        guard !backVirtual else { return false }               // 虚拟镜头由系统自己无缝切
+        return lensFor(ez) != currentLens
+    }
+
+    /// 0 = 超广角，1 = 广角，2 = 长焦。留 0.03 的余量：点「1×」时弹簧停在 0.998 也算 1×（以前就是因为这个没切回主摄）
+    func lensFor(_ ez: CGFloat) -> Int {
+        if hasUltraWide && ez < 0.97 { return 0 }
+        if hasTele && ez >= teleRatio - 0.03 { return 2 }
+        return 1
+    }
+
+    private var currentLens: Int {
+        switch backDevice?.deviceType {
+        case .some(.builtInUltraWideCamera): return 0
+        case .some(.builtInTelephotoCamera): return 2
+        default: return 1
+        }
     }
 
     // MARK: - 重配（设置里改了规格 / 切换镜头）
@@ -474,7 +556,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 let note = try self.configure(want, wantAudio: self.wantAudioSaved)
                 self.session.startRunning()
                 // 同一颗镜头换规格时保留各自的倍数
-                if (self.spec.ultraWide == old.ultraWide) { self.backZoom = keepBack; self.frontZoom = keepFront; self.applyZoom(back: true); self.applyZoom(back: false) }
+                if (self.spec.ultraWide == old.ultraWide && self.spec.tele == old.tele) { self.backZoom = keepBack; self.frontZoom = keepFront; self.applyZoom(back: true); self.applyZoom(back: false) }
                 else { self.applyZoom(back: true) }
                 DispatchQueue.main.async { completion(note, nil) }
             } catch {
@@ -842,9 +924,10 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     /// 把当前一帧合成并存成 JPEG / HEIF 文件
     func takePhoto(to url: URL, heif: Bool, completion: @escaping (Bool, String?) -> Void) {
-        dataQueue.async {
-            self.lock.lock(); let b = self.lastBack, f = self.lastFront; self.lock.unlock()
-            guard let back = b else { completion(false, "还没有画面"); return }
+        // 按下快门这一刻的画面，立刻在这里取走；合成和写文件交给 photoQueue
+        lock.lock(); let b = lastBack, f = lastFront; if b != nil { _photoPending += 1 }; lock.unlock()
+        guard let back = b else { completion(false, "还没有画面"); return }
+        photoQueue.async {
             autoreleasepool {
             let img = self.compose(back: back, front: f, size: self.canvas)
             do {
@@ -857,7 +940,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 }
                 completion(true, nil)
             } catch { completion(false, error.localizedDescription) }
-            self.ci.clearCaches()                    // 连拍时 4K 调色的中间结果别越攒越多
+            self.lock.lock(); self._photoPending -= 1; let idle = self._photoPending <= 0; self.lock.unlock()
+            if idle { self.ci.clearCaches() }        // 连拍时 4K 调色的中间结果别越攒越多
             }
         }
     }

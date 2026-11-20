@@ -30,7 +30,7 @@ final class DualSettings {
     }
     var liveAlsoStill: Bool { get { d.bool(forKey: key("liveStill")) } set { d.set(newValue, forKey: key("liveStill")) } }
     var glass: Bool { get { d.bool(forKey: key("glass")) } set { d.set(newValue, forKey: key("glass")) } }
-    var mirror: Bool { get { d.object(forKey: key("mirror")) as? Bool ?? true } set { d.set(newValue, forKey: key("mirror")) } }
+    var mirror: Bool { get { d.object(forKey: key("mirror2")) as? Bool ?? false } set { d.set(newValue, forKey: key("mirror2")) } }
     var audio: Bool { get { d.object(forKey: key("audio")) as? Bool ?? true } set { d.set(newValue, forKey: key("audio")) } }
     var pipStyleSplit: Bool { get { d.bool(forKey: key("split")) } set { d.set(newValue, forKey: key("split")) } }
     /// 双摄开关（默认关）。关 = 单摄；开 = 前后摄像头同时工作（设备不支持时开不了）
@@ -57,6 +57,8 @@ final class DualSettings {
     /// 取景网格线（三分线）
     var gridLines: Bool { get { d.bool(forKey: key("grid")) } set { d.set(newValue, forKey: key("grid")) } }
     /// 水平仪
+    /// 倒计时每秒震动一下（默认开）
+    var countVibrate: Bool { get { d.object(forKey: key("countVibrate")) as? Bool ?? true } set { d.set(newValue, forKey: key("countVibrate")) } }
     var level: Bool { get { d.bool(forKey: key("level")) } set { d.set(newValue, forKey: key("level")) } }
     /// 倒计时拍摄：0 关 / 3 / 5 / 10 秒（拍照、录像、实况都适用）
     var timerSec: Int {

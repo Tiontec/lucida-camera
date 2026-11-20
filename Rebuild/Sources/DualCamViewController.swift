@@ -18,6 +18,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private var finished = false, ready = false, reconfiguring = false
     private var saving = 0
     private var wantUW = false
+    private var wantTele = false
     private var torchOn = false
     private let gridView = DualGridView(), levelView = DualLevelView(), countLabel = UILabel()
     private let motion = CMMotionManager()
@@ -141,7 +142,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
 
     private func currentSpec() -> DualSpec {
-        var s = DualSpec(); s.res = st.res; s.fps = st.fps; s.full = st.fullSensor; s.ultraWide = wantUW
+        var s = DualSpec(); s.res = st.res; s.fps = st.fps; s.full = st.fullSensor; s.ultraWide = wantUW; s.tele = wantTele
         s.aspect = stageFrame.height > 0 ? stageFrame.width / stageFrame.height : 9.0 / 16.0
         return s
     }
@@ -178,7 +179,11 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             countLabel.text = "\(countLeft)"; countLabel.isHidden = false
             countLabel.transform = CGAffineTransform(scaleX: 1.35, y: 1.35); countLabel.alpha = 0.3
             UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseOut]) { self.countLabel.transform = .identity; self.countLabel.alpha = 1 }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if self.st.countVibrate {
+                // 相机在录音时 iOS 默认会压掉震动，要明确允许
+                try? AVAudioSession.sharedInstance().setAllowHapticsAndSystemSoundsDuringRecording(true)
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1)
+            }
         }
         show()
         countTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
@@ -359,9 +364,21 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         // 第二行：缩略图 · 快门 · 翻转
         let cy: CGFloat = 8 + 34 + 16 + 38
         shutterRing.frame = CGRect(x: W / 2 - 38, y: cy - 38, width: 76, height: 76); shutterRing.layer.cornerRadius = 38
-        let inset: CGFloat = engine.isRecording ? 22 : 7
-        shutter.frame = shutterRing.frame.insetBy(dx: inset, dy: inset)
-        shutter.layer.cornerRadius = engine.isRecording ? 8 : shutter.bounds.width / 2
+        // 视频模式：深色玻璃圈 + 红色圆（没录像）⇄ 红色圆角方块（录像中），两个状态之间用弹簧动画衔接
+        let rec = mode == .video && (engine.isRecording || recUI)
+        let inset: CGFloat = rec ? 24 : (mode == .video ? 6 : 7)
+        let target = shutterRing.frame.insetBy(dx: inset, dy: inset)
+        let toR: CGFloat = rec ? 11 : target.width / 2
+        if shutter.window != nil, shutter.frame != target, shutter.frame.width > 0 {
+            let a = CABasicAnimation(keyPath: "cornerRadius")
+            a.fromValue = shutter.layer.presentation()?.cornerRadius ?? shutter.layer.cornerRadius
+            a.toValue = toR; a.duration = 0.42; a.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.25, 0.5, 1)
+            shutter.layer.add(a, forKey: "cr")
+            shutter.layer.cornerRadius = toR
+            UIView.animate(withDuration: 0.45, delay: 0, usingSpringWithDamping: 0.72, initialSpringVelocity: 0.4, options: [.allowUserInteraction, .beginFromCurrentState]) { self.shutter.frame = target }
+        } else {
+            shutter.frame = target; shutter.layer.cornerRadius = toR
+        }
         thumb.frame = CGRect(x: 26, y: cy - 27, width: 54, height: 54)
         btnSwap.frame = CGRect(x: W - 26 - 46, y: cy - 23, width: 46, height: 46)
         // 多功能按键：快门和翻转按钮之间
@@ -440,7 +457,13 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private func syncTabs() {
         tabPhoto.setTitleColor(mode == .photo ? yellow : UIColor(white: 1, alpha: 0.75), for: .normal)
         tabVideo.setTitleColor(mode == .video ? yellow : UIColor(white: 1, alpha: 0.75), for: .normal)
-        shutter.backgroundColor = mode == .video && !engine.isRecording ? UIColor(red: 0.95, green: 0.2, blue: 0.2, alpha: 1) : .white
+        let vid = mode == .video
+        UIView.animate(withDuration: 0.3) {
+            self.shutter.backgroundColor = vid ? UIColor(red: 0.937, green: 0.325, blue: 0.314, alpha: 1) : .white
+            self.shutterRing.backgroundColor = vid ? UIColor(white: 0.11, alpha: 0.92) : .clear
+        }
+        shutterRing.layer.borderColor = (vid ? UIColor(white: 1, alpha: 0.28) : UIColor.white).cgColor
+        shutterRing.layer.borderWidth = vid ? 1.5 : 4
     }
     private func pipRadiusValue() -> CGFloat { [0.14, 0.3, 0.0][shapeIdx % 3] }
     private var shapeIdx = 0
@@ -451,7 +474,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         guard !engine.isRecording else { return }
         mode = b === tabVideo ? .video : .photo
         engine.liveEnabled = st.liveOn && mode == .photo
-        syncTabs(); syncButtons()
+        syncTabs(); layoutBottom(); syncButtons()
     }
     @objc private func toggleLive() {
         st.liveOn.toggle(); engine.liveEnabled = st.liveOn && mode == .photo; syncButtons()
@@ -478,7 +501,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             guard ready, !engine.isRecording, !reconfiguring else { return }
             if torchOn { torchOn = false; engine.setTorch(false) }
             var l = engine.layout; l.backIsMain.toggle(); engine.layout = l; st.singleFront = !l.backIsMain
-            wantUW = false
+            wantUW = false; wantTele = false
             applySpec(); return
         }
         var l = engine.layout; l.backIsMain.toggle(); engine.layout = l; st.backIsMain = l.backIsMain
@@ -493,7 +516,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         engine.dual = on
         var l = engine.layout; l.backIsMain = on ? st.backIsMain : !st.singleFront; engine.layout = l
         if torchOn { torchOn = false; engine.setTorch(false) }
-        wantUW = false
+        wantUW = false; wantTele = false
         reconfiguring = true; spinner.startAnimating()
         engine.reconfigure(currentSpec(), revert: { [weak self] in
             guard let self = self else { return }
@@ -509,7 +532,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
                 self.st.dualOn = on
                 done(on, note.isEmpty ? nil : note)
             }
-            self.wantUW = self.engine.spec.ultraWide
+            self.wantUW = self.engine.spec.ultraWide; self.wantTele = self.engine.spec.tele
             self.syncZoomRange(resetTo: nil); self.syncSpecPill(); self.syncButtons()
             self.view.setNeedsLayout()
             self.engine.liveEnabled = self.st.liveOn && self.mode == .photo
@@ -592,9 +615,9 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         engine.reconfigure(spec) { [weak self] note, err in
             guard let self = self else { return }
             self.reconfiguring = false; self.spinner.stopAnimating()
-            if let e = err { self.say("切换失败：\(e)", 4); self.wantUW = self.engine.spec.ultraWide }
+            if let e = err { self.say("切换失败：\(e)", 4); self.wantUW = self.engine.spec.ultraWide; self.wantTele = self.engine.spec.tele }
             else if !note.isEmpty { self.say(note, 4.5) }
-            self.wantUW = self.engine.spec.ultraWide
+            self.wantUW = self.engine.spec.ultraWide; self.wantTele = self.engine.spec.tele
             if let z = keepZoom, err == nil { self.engine.setZoom(back: self.mainIsBack, z); self.syncZoomRange(resetTo: z) }
             else { self.syncZoomRange(resetTo: nil) }
             self.syncSpecPill()
@@ -607,7 +630,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     /// 变焦停稳：需要的话在这时切换后置镜头（广角 ⇄ 超广角）
     private func zoomSettled(_ z: CGFloat) {
         guard ready, mainIsBack, !reconfiguring, !engine.isRecording, engine.needsLensSwitch(forBackZoom: z) else { return }
-        wantUW = z < 1
+        let lens = engine.lensFor(z)
+        wantUW = lens == 0; wantTele = lens == 2
         applySpec(keepZoom: z)
     }
 
@@ -815,7 +839,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     @objc private func shutterTapped() {
         guard ready, !reconfiguring, !flashBusy else { return }
         if counting { cancelCountdown(); return }
-        if st.timerSec > 0 && !engine.isRecording {
+        if st.timerSec > 0 && !engine.isRecording && !recUI {
             startCountdown(st.timerSec) { [weak self] in self?.fireShutter() }
             return
         }
@@ -825,7 +849,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private func fireShutter() {
         guard ready, !reconfiguring, !flashBusy else { return }
         if mode == .photo { takePhoto() }
-        else if engine.isRecording { stopRecording() }
+        else if engine.isRecording || recUI { stopRecording() }       // 录像刚启动、第一帧还没到的那几百毫秒里点停止，也算数
         else if liveTasks.contains(where: { $0.phase < 2 }) { say("还有实况在拍 / 合成，等它们完成再录像") }
         else { startRecording() }
     }
@@ -886,6 +910,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     private func doTakePhoto() {
         let live = st.liveOn
+        // 连拍太快：上一批 4K 照片还没处理完就别再堆（堆多了摄像头缓冲被占满，画面会卡死）
+        if engine.photoPending >= 2 { say("上一张还在处理，稍等一下再拍", 1.4); return }
         let heif = st.heif && !live
         let url = newFile(heif ? "heic" : "jpg")
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -969,7 +995,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             switch t.phase {
             case 0:
                 let e = min(t.total, min(pre, t.total / 2) + Date().timeIntervalSince(t.t0))
-                t.row.text = String(format: "● 实况 #%d  录制 %.1f / %.1f 秒", t.n, e, t.total)
+                t.row.text = e >= t.total ? "◐ 实况 #\(t.n)  收尾中…" : String(format: "● 实况 #%d  录制 %.1f / %.1f 秒", t.n, e, t.total)
                 t.row.backgroundColor = UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 0.9)
             case 1:
                 t.row.text = "◐ 实况 #\(t.n)  合成保存中…"
@@ -1009,7 +1035,11 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         return inPip(p) || focusBox.isVisible
     }
 
+    /// 录像从「按下开始」到「按下停止」的界面状态（引擎的 isRecording 要等第一帧到了才变真，中间有一小段空档）
+    private var recUI = false
+
     private func startRecording() {
+        recUI = true
         engine.liveEnabled = false
         engine.startRecording(to: newFile("mp4"), audio: st.audio)
         recStart = Date(); timerLabel.isHidden = false; timerLabel.text = "● 00:00"
@@ -1017,17 +1047,20 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             guard let self = self else { return }
             let s = Int(Date().timeIntervalSince(self.recStart)); self.timerLabel.text = String(format: "● %02d:%02d", s / 60, s % 60)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.layoutBottom(); self.syncTabs() }
+        layoutBottom(); syncTabs()
         say(engine.hasAudio && st.audio ? "开始录像（带声音）" : "开始录像（只录画面）")
     }
 
     private func stopRecording() {
         recTimer?.invalidate(); recTimer = nil; timerLabel.isHidden = true
+        recUI = false
+        let wasStarted = engine.isRecording
         engine.stopRecording { [weak self] url, err in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.layoutBottom(); self.syncTabs()
-                if let u = url { self.store(u, isVideo: true) } else { self.say("录像失败：\(err ?? "未知错误")") }
+                if let u = url { self.store(u, isVideo: true) }
+                else if wasStarted { self.say("录像失败：\(err ?? "未知错误")") }      // 还没开始就停了：静默取消
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { self.layoutBottom(); self.syncTabs() }

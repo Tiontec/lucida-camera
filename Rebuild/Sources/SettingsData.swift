@@ -322,7 +322,7 @@ extension SettingsRegistry {
             var items: [SItem] = []
             do {
                 var opts: [SOption] = []
-                items.append(SItem(id: "mirror", title: "前置画面镜像", sub: "", type: .toggle, scope: .dual, status: .live, def: "1", options: opts, notes: [], dest: "", inline: false, reconfigure: false, icon: "", min: 0, max: 0))
+                items.append(SItem(id: "mirror", title: "前置画面镜像", sub: "", type: .toggle, scope: .dual, status: .live, def: "0", options: opts, notes: [], dest: "", inline: false, reconfigure: false, icon: "", min: 0, max: 0))
             }
             groups.append(SGroup(head: "", foot: "", items: items))
         }
