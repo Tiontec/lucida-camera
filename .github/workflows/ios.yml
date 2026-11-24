@@ -13,8 +13,8 @@ on:
         default: 'macos-15'
 
 concurrency:
-  group: ios-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unsigned-ipa:
@@ -65,3 +65,69 @@ jobs:
         with:
           name: build-log
           path: build.log
+
+  signed-ipa:
+    name: 已签名 IPA（填好 Secrets 才会运行）
+    runs-on: ${{ inputs.runner || 'macos-15' }}
+    timeout-minutes: 45
+    env:
+      HAS_SIGNING: ${{ secrets.IOS_CERT_P12_BASE64 != '' && secrets.IOS_PROFILE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_SIGNING == 'true'
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: env.HAS_SIGNING == 'true'
+        with:
+          xcode-version: latest-stable
+      - name: 安装 XcodeGen 并生成工程
+        if: env.HAS_SIGNING == 'true'
+        run: brew install xcodegen && xcodegen generate
+
+      - name: 导入证书和描述文件
+        if: env.HAS_SIGNING == 'true'
+        env:
+          CERT_P12: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          KC="$RUNNER_TEMP/lucida.keychain-db"; KCP="$(uuidgen)"
+          security create-keychain -p "$KCP" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCP" "$KC"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KCP" "$KC"
+          security list-keychain -d user -s "$KC" login.keychain
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/p.mobileprovision"
+          UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< "$(security cms -D -i "$RUNNER_TEMP/p.mobileprovision")")
+          NAME=$(/usr/libexec/PlistBuddy -c "Print Name" /dev/stdin <<< "$(security cms -D -i "$RUNNER_TEMP/p.mobileprovision")")
+          TEAM=$(/usr/libexec/PlistBuddy -c "Print TeamIdentifier:0" /dev/stdin <<< "$(security cms -D -i "$RUNNER_TEMP/p.mobileprovision")")
+          cp "$RUNNER_TEMP/p.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+          echo "PROFILE_NAME=$NAME" >> $GITHUB_ENV
+          echo "TEAM_ID=$TEAM" >> $GITHUB_ENV
+
+      - name: 归档并导出 IPA
+        if: env.HAS_SIGNING == 'true'
+        env:
+          EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD || 'ad-hoc' }}
+        run: |
+          xcodebuild -project LucidaRebuild.xcodeproj -scheme LucidaRebuild -configuration Release \
+            -archivePath build/LucidaRebuild.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" CODE_SIGN_IDENTITY="Apple Distribution" \
+            archive
+          P=build/ExportOptions.plist
+          /usr/libexec/PlistBuddy -c "Add :method string $EXPORT_METHOD" "$P"
+          /usr/libexec/PlistBuddy -c "Add :teamID string $TEAM_ID" "$P"
+          /usr/libexec/PlistBuddy -c "Add :signingStyle string manual" "$P"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$P"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.lucida.rebuild.ios string $PROFILE_NAME" "$P"
+          xcodebuild -exportArchive -archivePath build/LucidaRebuild.xcarchive \
+            -exportOptionsPlist build/ExportOptions.plist -exportPath build/export
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_SIGNING == 'true'
+        with:
+          name: LucidaRebuild-signed-ipa
+          path: build/export/*.ipa

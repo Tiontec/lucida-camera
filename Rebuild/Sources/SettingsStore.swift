@@ -50,13 +50,29 @@ enum SettingsStore {
         case "dualOn":     return b(s.dualOn)
         case "singleFront": return b(s.singleFront)
         case "backMain":   return b(s.backIsMain)
+        // ── A 在 1.3.0–1.5.0 新做的功能（键在 DualSettings 里已有）──
+        case "ratio":      return s.ratio                    // "16:9" / "4:3" / "1:1"
+        case "flash":      return String(s.flashMode)        // 0 关 / 1 自动 / 2 开
+        case "timerSec":   return String(s.timerSec)         // 0 / 3 / 5 / 10
+        case "grid":       return b(s.gridLines)
+        case "level":      return b(s.level)
+        case "countVibrate": return b(s.countVibrate)
         default: break
         }
+        // 旧值 0（只存实况）/ 1（实况 + 静态照片）统一迁移为 pair（照片 + 视频）：两个旧值都不丢信息
+        if id == "sLiveStill", let o = UserDefaults.standard.object(forKey: prefix + id), ["0", "1"].contains("\(o)") {
+            return "pair"
+        }
         // ── 新增的键 ──
+        if id == "panelOrder" {
+            return UserDefaults.standard.string(forKey: prefix + id) ?? ""
+        }
         if let o = UserDefaults.standard.object(forKey: prefix + id) {
             let v = "\(o)"
             if valid(id, v) { return v }
         }
+        // 没存过界面风格：按旧的「液态玻璃界面」开关推导（开 = 液态玻璃，关 = 默认面板），旧用户外观不变
+        if id == "glassStyle" { return DualSettings.shared.glass ? "liquid" : "plain" }
         return defaultValue(id)
     }
 
@@ -83,6 +99,18 @@ enum SettingsStore {
         case "dualOn":     s.dualOn = v == "1"
         case "singleFront": s.singleFront = v == "1"
         case "backMain":   s.backIsMain = v == "1"
+        case "ratio":      if ["16:9", "4:3", "1:1"].contains(v) { s.ratio = v }
+        case "flash":      s.flashMode = Int(v) ?? 0
+        case "timerSec":   s.timerSec = Int(v) ?? 0
+        case "grid":       s.gridLines = v == "1"
+        case "level":      s.level = v == "1"
+        case "countVibrate": s.countVibrate = v == "1"
+        case "panelOrder":
+            // 面板按钮顺序：逗号分隔的 id，不是开关，不走 valid() 校验
+            UserDefaults.standard.set(v, forKey: prefix + id)
+        case "glassStyle":
+            // 界面风格：毛玻璃 / 液态玻璃 = 开启玻璃；默认面板 = 关掉玻璃（同步到 glass，调用方照常读 glass）
+            if valid(id, v) { UserDefaults.standard.set(v, forKey: prefix + id); DualSettings.shared.glass = (v != "plain") }
         default:
             if valid(id, v) { UserDefaults.standard.set(v, forKey: prefix + id) }
         }
@@ -97,7 +125,8 @@ extension DualSettings {
 
     // 单摄的实况（和双摄的 liveDur / liveAlsoStill / liveTimer 各自独立）—— 由 A 接线
     var sLiveDur: Double { get { Double(SettingsStore.int("sLiveDur")) } set { SettingsStore.set("sLiveDur", String(Int(newValue))) } }
-    var sLiveStill: Bool { get { SettingsStore.bool("sLiveStill") } set { SettingsStore.set("sLiveStill", newValue ? "1" : "0") } }
+    /// 单摄实况保存方式：true = pair（照片 + 视频，默认）；false = native（只存实况，仅 iOS）。存的值是 "pair" / "native"
+    var sLiveStill: Bool { get { SettingsStore.get("sLiveStill") == "pair" } set { SettingsStore.set("sLiveStill", newValue ? "pair" : "native") } }
     var sLiveTimer: Bool { get { SettingsStore.bool("sLiveTimer") } set { SettingsStore.set("sLiveTimer", newValue ? "1" : "0") } }
     var sLiveFps: Int { get { SettingsStore.int("sLiveFps") } set { SettingsStore.set("sLiveFps", String(newValue)) } }
 
@@ -120,4 +149,7 @@ extension DualSettings {
     var uiReset: Bool { get { SettingsStore.bool("uiReset") } set { SettingsStore.set("uiReset", newValue ? "1" : "0") } }
     var island: String { get { SettingsStore.get("island") } set { SettingsStore.set("island", newValue) } }
     var logOn: Bool { get { SettingsStore.bool("logOn") } set { SettingsStore.set("logOn", newValue ? "1" : "0") } }
+    // countVibrate 由 DualSettings 主类自己定义（这里不能再写一遍，否则「invalid redeclaration」）
+    /// 界面风格：frosted 毛玻璃（默认）/ liquid 液态玻璃（A 做完后接线；设置里这一项的「液态玻璃」现在灰色）
+    var glassStyle: String { get { SettingsStore.get("glassStyle") } set { SettingsStore.set("glassStyle", newValue) } }
 }

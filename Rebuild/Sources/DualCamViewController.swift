@@ -2,6 +2,7 @@ import UIKit
 import Photos
 import AVFoundation
 import CoreMotion
+import os        // os_proc_available_memory()
 
 /// 原生双摄相机界面：取景（引擎合成的画面）+ 顶部 / 底部控件 + 变焦转盘 + 调色面板 + 设置 + 相册。
 final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate {
@@ -248,6 +249,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     private func buildUI() {
         stage.backgroundColor = .black; stage.clipsToBounds = true
         stage.layer.addSublayer(engine.previewLayer)
+        GlassRefractHub.shared.stage = stage
         view.addSubview(stage)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panStage(_:))); pan.delegate = self
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapStage(_:)))
@@ -908,8 +910,16 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         }
     }
 
+    /// 系统给本 App 剩下的可用内存不多了（连拍太多时实况缓冲会占满内存，容易卡 / 闪退）
+    private var memoryLow: Bool {
+        guard #available(iOS 13.0, *) else { return false }
+        return os_proc_available_memory() < 250 * 1024 * 1024
+    }
+
     private func doTakePhoto() {
         let live = st.liveOn
+        // 内存快满：只提示，不挡拍摄（挡的是上面的「上一张还没处理完」）
+        if memoryLow { say("内存快满 慢点拍哦", 2.0) }
         // 连拍太快：上一批 4K 照片还没处理完就别再堆（堆多了摄像头缓冲被占满，画面会卡死）
         if engine.photoPending >= 2 { say("上一张还在处理，稍等一下再拍", 1.4); return }
         let heif = st.heif && !live

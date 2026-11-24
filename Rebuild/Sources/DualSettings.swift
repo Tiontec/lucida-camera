@@ -30,7 +30,7 @@ final class DualSettings {
     }
     var liveAlsoStill: Bool { get { d.bool(forKey: key("liveStill")) } set { d.set(newValue, forKey: key("liveStill")) } }
     var glass: Bool { get { d.bool(forKey: key("glass")) } set { d.set(newValue, forKey: key("glass")) } }
-    var mirror: Bool { get { d.object(forKey: key("mirror2")) as? Bool ?? false } set { d.set(newValue, forKey: key("mirror2")) } }
+    var mirror: Bool { get { d.object(forKey: key("mirror2")) as? Bool ?? true } set { d.set(newValue, forKey: key("mirror2")) } }
     var audio: Bool { get { d.object(forKey: key("audio")) as? Bool ?? true } set { d.set(newValue, forKey: key("audio")) } }
     var pipStyleSplit: Bool { get { d.bool(forKey: key("split")) } set { d.set(newValue, forKey: key("split")) } }
     /// 双摄开关（默认关）。关 = 单摄；开 = 前后摄像头同时工作（设备不支持时开不了）
