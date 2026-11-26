@@ -22,7 +22,7 @@ extension SettingsRegistry {
             do {
                 var opts: [SOption] = []
                 opts.append(SOption(v: "frosted", title: "毛玻璃", sub: "半透明深色 + 高光描边", short: "毛玻璃", soon: false))
-                opts.append(SOption(v: "liquid", title: "液态玻璃", sub: "iOS 26 及以上用系统原生；低版本和安卓用自绘折射", short: "液态玻璃", soon: false))
+                opts.append(SOption(v: "liquid", title: "液态玻璃", sub: "iOS 26 及以上用系统原生液态玻璃；低版本自动用普通毛玻璃", short: "液态玻璃", soon: false))
                 opts.append(SOption(v: "plain", title: "默认面板", sub: "关掉玻璃和模糊，取景和设置都用普通的深色样式（默认）", short: "默认面板", soon: false))
                 items.append(SItem(id: "glassStyle", title: "界面风格", sub: "", type: .radio, scope: .both, status: .live, def: "plain", options: opts, notes: [], dest: "", inline: true, reconfigure: false, icon: "drop", min: 0, max: 0))
             }

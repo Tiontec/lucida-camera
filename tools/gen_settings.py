@@ -48,7 +48,9 @@ C.append(coll("appearance", "界面与外观", "page", summary="皮肤 · 面板
   intro="界面风格和面板样式现在可以用；皮肤、大小和字体的设置还在适配中。", groups=[
     group([item("glassStyle", "界面风格", "radio", default="plain", inline=True, icon="drop", options=[
         opt("frosted", "毛玻璃", "半透明深色 + 高光描边", short="毛玻璃"),
-        opt("liquid", "液态玻璃", PV("iOS 26 及以上用系统原生；低版本和安卓用自绘折射", "自绘折射：边缘折射 + 高光（安卓 13 以下自动用毛玻璃）"), short="液态玻璃"),
+        opt("liquid", "液态玻璃", "iOS 26 及以上用系统原生液态玻璃；低版本自动用普通毛玻璃", short="液态玻璃", plat="ios"),
+        opt("solid", "固态玻璃", "上一版的液态玻璃：取景画面按透镜折弯（原样保留）", short="固态玻璃", plat="android"),
+        opt("liquid2", "液态玻璃", "新：SDF 圆角折射 + 边缘高光（安卓 13 及以上；低版本自动用固态玻璃）", short="液态玻璃", plat="android"),
         opt("plain", "默认面板", "关掉玻璃和模糊，取景和设置都用普通的深色样式（默认）", short="默认面板")],
         foot=PV("选毛玻璃 / 液态玻璃即开启玻璃效果；选默认面板就是关掉玻璃和模糊。", "选毛玻璃 / 液态玻璃即开启玻璃效果；选默认面板就是关掉玻璃和模糊。"))],
         head="界面风格"),

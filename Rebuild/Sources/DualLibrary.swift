@@ -32,15 +32,20 @@ enum DualLibrary {
     }
 
     /// 取出登记过的、仍在系统相册里的资源，新 → 旧。没有读取权限时返回空。
+    /// 相册里显示的内容：系统相册里全部的照片和视频（新的在前，最多 2000 条）。
+    /// 澄影拍的动态照片还是靠 ids 识别（DualAlbum 里的 AlbumCell 用 PHAsset.mediaSubtypes 判断实况）。
     static func fetch() -> [PHAsset] {
         guard PhotoSaver.canRead else { return [] }
-        let all = ids
-        guard !all.isEmpty else { return [] }
-        let res = PHAsset.fetchAssets(withLocalIdentifiers: all, options: nil)
-        var map: [String: PHAsset] = [:]
-        res.enumerateObjects { a, _, _ in map[a.localIdentifier] = a }
-        if map.count != all.count { prune(keeping: Set(map.keys)) }
-        return all.reversed().compactMap { map[$0] }
+        let opts = PHFetchOptions()
+        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        opts.predicate = NSPredicate(format: "mediaType == %d || mediaType == %d",
+                                     PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
+        opts.fetchLimit = 2000
+        let res = PHAsset.fetchAssets(with: opts)
+        var out: [PHAsset] = []
+        out.reserveCapacity(res.count)
+        res.enumerateObjects { a, _, _ in out.append(a) }
+        return out
     }
 
     /// 从系统相册删除（系统会弹确认框）。completion(是否真的删了)
