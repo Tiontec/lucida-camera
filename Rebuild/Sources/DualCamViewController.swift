@@ -81,9 +81,35 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     // MARK: - 生命周期
 
+    private var skinMasc: UIImageView?
+    /// 皮肤（设置 → 外观 → 皮肤）：原中版 = 黑底；大肥鱼 = 深蓝底 + 吉祥物（图片取自 11.6.x 网页，位置是近似的）
+    func applySkin() {
+        let fish = dualSkinIsFish
+        view.backgroundColor = fish ? UIColor(red: 0.024, green: 0.039, blue: 0.094, alpha: 1) : .black
+        if fish {
+            if skinMasc == nil {
+                let iv = UIImageView(image: UIImage(named: "SkinMasc"))
+                iv.contentMode = .scaleAspectFit
+                iv.isUserInteractionEnabled = false
+                iv.translatesAutoresizingMaskIntoConstraints = false
+                view.addSubview(iv)
+                NSLayoutConstraint.activate([
+                    iv.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+                    iv.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -150),
+                    iv.widthAnchor.constraint(equalToConstant: 96),
+                    iv.heightAnchor.constraint(equalTo: iv.widthAnchor, multiplier: 287.0 / 460.0)])
+                skinMasc = iv
+            }
+            skinMasc?.isHidden = false
+        } else {
+            skinMasc?.isHidden = true
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        applySkin()
         mode = startMode
         engine.dual = st.dualOn && DualCamEngine.isSupported
         engine.layout.backIsMain = engine.dual ? st.backIsMain : !st.singleFront
@@ -645,7 +671,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             guard let self = self else { return }
             var l = self.engine.layout; l.border = self.st.border; l.mirrorFront = self.st.mirror; self.engine.layout = l
             self.engine.fullRate = self.st.fullRate
-            self.applyGlass(); self.syncSpecPill(); self.syncButtons(); self.syncOverlays()
+            self.applySkin(); self.applyGlass(); self.syncSpecPill(); self.syncButtons(); self.syncOverlays()
             if recfg { self.view.setNeedsLayout(); self.view.layoutIfNeeded(); self.applySpec() }
         }
         v.modalPresentationStyle = .pageSheet

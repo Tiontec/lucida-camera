@@ -3,7 +3,12 @@ import UIKit
 /// 液态玻璃 / 普通样式 两用的控件：分段选择、开关、滑动条。
 /// glass = true：iOS 26 及以上用系统原生 UIGlassEffect（低版本自动退回系统毛玻璃）；glass = false：平面深色样式。
 
-let dualYellow = UIColor(red: 1, green: 0.84, blue: 0.04, alpha: 1)
+/// 当前皮肤（设置 → 外观 → 皮肤）：mid = 原中版，fish = 大肥鱼
+var dualSkinIsFish: Bool { SettingsStore.get("skin") == "fish" }
+/// 强调色：原中版黄色；大肥鱼蓝色（与 11.6.x 网页里 .skin-fish 的 --yellow:#7fb6ff 一致）
+var dualYellow: UIColor {
+    dualSkinIsFish ? UIColor(red: 0.498, green: 0.714, blue: 1.0, alpha: 1) : UIColor(red: 1, green: 0.84, blue: 0.04, alpha: 1)
+}
 
 // MARK: - 玻璃样式（设置 → 界面风格）
 

@@ -8,6 +8,11 @@ struct AboutSection { let heading: String; let paragraph: String }
 enum ContentData {
     /// 更新记录，新的在前（来源 updates.json）
     static let updates: [UpdateEntry] = [
+        UpdateEntry(version: "2.5.0", date: "2026-11-26", group: "new", items: [
+            UpdateItem(title: "变焦条 100 刻度", body: "设置里选 100× 后，主页的变焦条和转盘都有 100 的刻度（之前递推时跳过了 100）。"),
+            UpdateItem(title: "皮肤", body: "设置 → 外观 → 皮肤 可以选「大肥鱼」：蓝色强调色、深蓝背景、吉祥物图。原中版不变。"),
+            UpdateItem(title: "相册橙框", body: "澄影拍的照片和视频在相册里有橙色细框，方便区分系统相册里的其它内容。"),
+        ]),
         UpdateEntry(version: "2.4.0", date: "2026-11-25", group: "new", items: [
             UpdateItem(title: "相册", body: "iOS 相册显示系统相册里全部的照片和视频（新的在前，最多 2000 条）；安卓同样，但需要授权读取照片和视频（授权后重新打开相册）。删除会同时删掉系统相册里的那一份。"),
             UpdateItem(title: "设置页刷新率", body: "设置页打开时，安卓把屏幕刷新率提到这台手机的最高值（120Hz 机型）；关闭设置后恢复。iOS 本来就开了 120Hz。"),

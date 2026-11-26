@@ -54,7 +54,7 @@ C.append(coll("appearance", "界面与外观", "page", summary="皮肤 · 面板
         opt("plain", "默认面板", "关掉玻璃和模糊，取景和设置都用普通的深色样式（默认）", short="默认面板")],
         foot=PV("选毛玻璃 / 液态玻璃即开启玻璃效果；选默认面板就是关掉玻璃和模糊。", "选毛玻璃 / 液态玻璃即开启玻璃效果；选默认面板就是关掉玻璃和模糊。"))],
         head="界面风格"),
-    group([item("skin", "外观 / 皮肤", "radio", status=SOON, default="mid", icon="paintbrush", sub="等皮肤功能完成后开放（原中版、大肥鱼两款皮肤）", options=[
+    group([item("skin", "外观 / 皮肤", "radio", default="mid", icon="paintbrush", options=[
         opt("mid", "原中版", "默认皮肤"),
         opt("fish", "大肥鱼", "带角色的皮肤")])], head="皮肤"),
     group([item("panelTheme", "面板样式", "radio", default="glass", icon="rectangle.fill", inline=True,

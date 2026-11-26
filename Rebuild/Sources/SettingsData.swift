@@ -34,7 +34,7 @@ extension SettingsRegistry {
                 var opts: [SOption] = []
                 opts.append(SOption(v: "mid", title: "原中版", sub: "默认皮肤", short: "原中版", soon: false))
                 opts.append(SOption(v: "fish", title: "大肥鱼", sub: "带角色的皮肤", short: "大肥鱼", soon: false))
-                items.append(SItem(id: "skin", title: "外观 / 皮肤", sub: "等皮肤功能完成后开放（原中版、大肥鱼两款皮肤）", type: .radio, scope: .both, status: .soon, def: "mid", options: opts, notes: [], dest: "", inline: false, reconfigure: false, icon: "paintbrush", min: 0, max: 0))
+                items.append(SItem(id: "skin", title: "外观 / 皮肤", sub: "", type: .radio, scope: .both, status: .live, def: "mid", options: opts, notes: [], dest: "", inline: false, reconfigure: false, icon: "paintbrush", min: 0, max: 0))
             }
             groups.append(SGroup(head: "皮肤", foot: "", items: items))
         }

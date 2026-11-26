@@ -186,6 +186,8 @@ final class DualAlbumViewController: UIViewController, UICollectionViewDataSourc
         cell.entryID = e.id
         cell.iv.image = nil
         cell.set(video: e.isVideo, live: e.isLive, duration: e.duration)
+        // 澄影拍的（澄影存储里的文件，或 DualLibrary.ids 里记着的系统相册项）加橙色细框
+        if case .asset(let a0) = e { cell.set(mine: DualLibrary.ids.contains(a0.localIdentifier)) } else { cell.set(mine: true) }
         cell.set(selecting: selecting, picked: picked.contains(e.id))
         let side = floor((c.bounds.width - CGFloat(cols - 1) * 2) / CGFloat(cols))
         switch e {
@@ -264,6 +266,21 @@ private final class AlbumCell: UICollectionViewCell {
         contentView.addSubview(check)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// 橙色细框（克劳德主题色 #FF8A3D）：标出澄影拍的照片 / 视频
+    private lazy var mineFrame: UIView = {
+        let v = UIView()
+        v.isUserInteractionEnabled = false
+        v.layer.borderColor = UIColor(red: 1.0, green: 0.541, blue: 0.239, alpha: 1).cgColor
+        v.layer.borderWidth = 2.5
+        v.layer.cornerRadius = 3
+        v.isHidden = true
+        v.frame = contentView.bounds
+        v.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        contentView.addSubview(v)
+        return v
+    }()
+    func set(mine: Bool) { mineFrame.isHidden = !mine }
 
     func set(video: Bool, live isLive: Bool, duration: TimeInterval) {
         badge.isHidden = !video

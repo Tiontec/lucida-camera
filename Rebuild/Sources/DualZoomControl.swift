@@ -20,7 +20,7 @@ final class DualZoomControl: UIView {
     var zoom: CGFloat { exp(lz) }
 
     // MARK: 主页面同款常量
-    private let STOPS: [CGFloat] = [0.5, 1, 2, 3, 5, 10, 15, 20, 25, 30]
+    private let STOPS: [CGFloat] = [0.5, 1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 80, 100]   // 50 / 80 / 100 只在设置的变焦上限够大时显示
     private let MMS: [Double: Int] = [0.5: 13, 0.6: 16, 1: 26, 2: 52, 3: 77, 5: 120, 10: 240, 15: 360, 20: 480, 25: 600, 30: 720]
     private let LPRI = ["1", "10", "30", "5", "2", "3", "0.5", "0.6", "20", "15", "25"]
     /// 变焦速度档（设置「变焦速度」：1× → 10 / 15 / 20 / 25 / 30× 走 34.7% 屏宽；默认 30×）
@@ -131,6 +131,11 @@ final class DualZoomControl: UIView {
             ticks.append(Tick(l: log(k), maj: isMaj, txt: txt, mm: MMS[Double(k)] ?? Int((26 * k).rounded())))
             v = k < 2 ? k + 0.1 : (k < 5 ? k + 0.2 : (k < 10 ? k + 0.5 : (k < 30 ? k + 1 : (k < 50 ? k + 5 : k + 10))))
         }
+        // 递推的步长跳过了 100：把主刻度里缺的补上，再按对数位置排好
+        for m in maj where !ticks.contains(where: { abs(exp($0.l) - m) < 0.005 }) {
+            ticks.append(Tick(l: log(m), maj: true, txt: abs(m - m.rounded()) < 0.001 ? String(Int(m.rounded())) : "\(m)", mm: MMS[Double(m)] ?? Int((26 * m).rounded())))
+        }
+        ticks.sort { $0.l < $1.l }
     }
 
     private func buildPill() {
