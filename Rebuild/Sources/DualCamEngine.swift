@@ -123,6 +123,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     var liveEnabled = false
 
     private let ci = CIContext(options: [.cacheIntermediates: false, .workingColorSpace: NSNull()])
+    /// 照片专用上下文：4K 合成和写 JPEG / HEIF 不和取景、实况共用同一个上下文（否则连拍时实况编码会被拖慢）
+    private let ciPhoto = CIContext(options: [.cacheIntermediates: false, .workingColorSpace: NSNull()])
     private let rgb = CGColorSpaceCreateDeviceRGB()
 
     // 预览 / 实况缓冲池
@@ -491,12 +493,14 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     func zoomRange(back: Bool) -> (CGFloat, CGFloat) {
         if back, backVirtual, let d = backDevice {
             let lo = max(0.5, d.minAvailableVideoZoomFactor / virtualWideAt)
-            let hi = min(CGFloat(max(30, DualSettings.shared.zoomRange)), d.maxAvailableVideoZoomFactor / virtualWideAt)
+            // 上限按设置的「变焦倍率扩充」（最低 30）。硬件到顶后的部分用软件裁剪放大（见 digitalCrop）
+            let hi = CGFloat(max(30, DualSettings.shared.zoomRange))
             return (hasUltraWide ? max(lo, Self.uwMin()) : 1, max(1, hi))
         }
         if back {
             let wide = backDevice?.deviceType == .builtInWideAngleCamera ? backDevice : AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-            let hi = min(CGFloat(max(30, DualSettings.shared.zoomRange)), wide?.activeFormat.videoMaxZoomFactor ?? 10)
+            _ = wide
+            let hi = CGFloat(max(30, DualSettings.shared.zoomRange))
             return (hasUltraWide ? Self.uwMin() : 1, max(1, hi))
         }
         let hi = min(10, frontDevice?.activeFormat.videoMaxZoomFactor ?? 1)
@@ -524,12 +528,28 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             else { vz = ez }
         } else { vz = frontZoom }
         let hi = min(d.activeFormat.videoMaxZoomFactor, d.maxAvailableVideoZoomFactor)
+        let want = vz
         vz = min(hi, max(d.minAvailableVideoZoomFactor, vz))
+        // 硬件到顶后剩下的倍数，交给软件裁剪（只有后置用）
+        backDigital = (back && want > vz) ? want / max(vz, 0.01) : 1
         do {
             try d.lockForConfiguration()
             d.videoZoomFactor = vz
             d.unlockForConfiguration()
         } catch { /* 变焦失败不影响取景 */ }
+    }
+
+    /// 硬件变焦到顶后，剩下的倍数由这里补上（后置画面中心裁剪再放大回原尺寸）。1 = 不裁剪
+    private(set) var backDigital: CGFloat = 1
+
+    private func digitalCrop(_ img: CIImage, _ f: CGFloat) -> CIImage {
+        guard f > 1.0001 else { return img }
+        let e = img.extent
+        let r = CGRect(x: e.midX - e.width / (2 * f), y: e.midY - e.height / (2 * f), width: e.width / f, height: e.height / f)
+        let t = CGAffineTransform(translationX: -r.minX, y: -r.minY)
+            .concatenating(CGAffineTransform(scaleX: f, y: f))
+            .concatenating(CGAffineTransform(translationX: e.minX, y: e.minY))
+        return img.cropped(to: r).transformed(by: t)
     }
 
     /// 当前后置镜头能不能表达这个倍数；不能就说明需要换镜头
@@ -884,7 +904,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         let L = layout, W = size.width, H = size.height
         let (mr, _) = L.rects(W, H)
         let mainIsBack = L.backIsMain
-        let mainImg = CIImage(cvPixelBuffer: mainIsBack ? back : front)
+        let mainImg = mainIsBack ? digitalCrop(CIImage(cvPixelBuffer: back), backDigital) : CIImage(cvPixelBuffer: front)
         let g = mainIsBack ? gradeBack : gradeFront
         var m = fill(mainImg, mr, H, mirror: !mainIsBack && L.mirrorFront)
         if !g.isNeutral { m = g.apply(m) }
@@ -895,7 +915,7 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     /// base：已经算好的主画面层（只在画中画时用）；不给就从头算
     func compose(back: CVPixelBuffer, front: CVPixelBuffer?, size: CGSize, base: CIImage? = nil) -> CIImage {
         let L = layout, W = size.width, H = size.height
-        let bk = CIImage(cvPixelBuffer: back)
+        let bk = digitalCrop(CIImage(cvPixelBuffer: back), backDigital)
         let ft = front.map { CIImage(cvPixelBuffer: $0) }
         let bg = CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: size))
         var out: CIImage
@@ -946,16 +966,16 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             let img = self.compose(back: back, front: f, size: self.canvas)
             do {
                 if heif {
-                    try self.ci.writeHEIFRepresentation(of: img, to: url, format: .RGBA8, colorSpace: self.rgb,
+                    try self.ciPhoto.writeHEIFRepresentation(of: img, to: url, format: .RGBA8, colorSpace: self.rgb,
                                                         options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.9])
                 } else {
-                    try self.ci.writeJPEGRepresentation(of: img, to: url, colorSpace: self.rgb,
+                    try self.ciPhoto.writeJPEGRepresentation(of: img, to: url, colorSpace: self.rgb,
                                                         options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.93])
                 }
                 completion(true, nil)
             } catch { completion(false, error.localizedDescription) }
             self.lock.lock(); self._photoPending -= 1; let idle = self._photoPending <= 0; self.lock.unlock()
-            if idle { self.ci.clearCaches() }        // 连拍时 4K 调色的中间结果别越攒越多
+            if idle { self.ciPhoto.clearCaches() }   // 连拍时 4K 调色的中间结果别越攒越多
             }
         }
     }
@@ -1058,7 +1078,8 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private struct LiveJob {
         let id: UUID, enc: LiveEncoder
         let start: CMTime, shutter: CMTime, end: CMTime
-        let done: (URL?, Double, String?) -> Void
+        let total: Double
+        let done: (URL?, Double, Double, String?) -> Void   // (MOV, 静帧所在秒, 实际录到的秒数, 错误)
     }
     private var liveJobs: [LiveJob] = []
     private var cachedLiveFps = 30
@@ -1101,13 +1122,20 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             let clip = j.enc.clip(from: j.start, until: j.end)
             let aclip = j.enc.audioClip(from: clip.first?.pts ?? j.start, until: j.end)
             j.enc.release(j.id)
-            guard let first = clip.first else { AppLog.error("实况", "实况缓存里没有画面（\(j.enc.diag)）"); j.done(nil, 0, "实况缓存里没有画面（\(j.enc.diag)）"); return }
+            let tag = String(j.id.uuidString.prefix(4))
+            guard let first = clip.first, let last = clip.last else {
+                AppLog.error("实况", "第 \(tag)：实况缓存里没有画面（\(j.enc.diag)）"); j.done(nil, 0, 0, "实况缓存里没有画面（\(j.enc.diag)）"); return
+            }
+            // 实际时长 = 最后一帧 + 一帧 - 第一帧（按 30 帧 / 秒计）
+            let real = max(0, CMTimeGetSeconds(CMTimeSubtract(CMTimeAdd(last.pts, CMTime(value: 1, timescale: 30)), first.pts)))
+            AppLog.info("实况", "第 \(tag)：取到 \(clip.count) 帧 ≈ \(String(format: "%.2f", real)) 秒（目标 \(String(format: "%.1f", j.total)) 秒）")
+            if real < j.total - 0.4 { AppLog.warn("实况", "第 \(tag)：录短了（\(String(format: "%.2f", real)) 秒 < 目标 \(String(format: "%.1f", j.total)) 秒，\(j.enc.diag)）") }
             let url = AppDirs.outDir.appendingPathComponent("澄影双摄_实况_\(UUID().uuidString).mov")
             if let e = LiveEncoder.writeMOV(clip, audio: aclip, to: url) {
                 try? FileManager.default.removeItem(at: url)
-                AppLog.error("实况", "实况合成失败：\(e)（\(j.enc.diag)）"); j.done(nil, 0, e)
+                AppLog.error("实况", "第 \(tag)：实况合成失败：\(e)（\(j.enc.diag)）"); j.done(nil, 0, 0, e)
             } else {
-                j.done(url, max(0, CMTimeGetSeconds(CMTimeSubtract(j.shutter, first.pts))), nil)
+                j.done(url, max(0, CMTimeGetSeconds(CMTimeSubtract(j.shutter, first.pts))), real, nil)
             }
         }
     }
@@ -1120,16 +1148,16 @@ final class DualCamEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     /// 按下快门：登记一个窗口（快门前 1.5 秒 → 总长 totalSeconds），到点后自动合成 MOV。可以连续按任意多次。
     /// done(MOV 文件, 静帧所在秒数, 错误)
-    func captureLive(totalSeconds: Double, done: @escaping (URL?, Double, String?) -> Void) {
+    func captureLive(totalSeconds: Double, done: @escaping (URL?, Double, Double, String?) -> Void) {
         dataQueue.async {
-            guard let enc = self.liveEnc, self.liveLastPTS.isValid else { done(nil, 0, "实况缓存还没准备好，请稍等一下再拍"); return }
+            guard let enc = self.liveEnc, self.liveLastPTS.isValid else { done(nil, 0, 0, "实况缓存还没准备好，请稍等一下再拍"); return }
             let shutter = self.liveLastPTS
             let start = CMTimeSubtract(shutter, CMTime(seconds: 1.5, preferredTimescale: 600))
             let total = max(1.0, totalSeconds)
             let end = CMTimeAdd(start, CMTime(seconds: total, preferredTimescale: 600))
             let id = UUID()
             enc.hold(id, from: start)
-            self.liveJobs.append(LiveJob(id: id, enc: enc, start: start, shutter: shutter, end: end, done: done))
+            self.liveJobs.append(LiveJob(id: id, enc: enc, start: start, shutter: shutter, end: end, total: total, done: done))
             // 保险：万一画面中途断了，到时间也要收尾，不让这一张一直挂着
             self.dataQueue.asyncAfter(deadline: .now() + total + 4) { [weak self] in
                 guard let self = self, let i = self.liveJobs.firstIndex(where: { $0.id == id }) else { return }

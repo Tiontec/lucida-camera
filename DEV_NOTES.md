@@ -2,11 +2,6 @@
 
 A 已经不在了，从 2.2.0 起所有开发、合并、打包都由同一个人负责（B）。这份文件把不能丢的约定写下来。
 
-## 0. 压缩包命名（每次都要带版本号）
-- 格式：`<工程名>-<版本号>.zip`，例如 `LucidaRebuild-ios-2.2.0.zip`、`lucida-rebuild-android-project-2.2.0.zip`。
-- 版本号和 `project.yml` / `build.gradle` 里的版本号保持一致（当前 2.2.0）。
-- 不管安卓还是苹果，都要带版本号，方便分类。
-
 ## 1. 打包规矩（上次就是栽在这里）
 - 压缩包里的文件必须**直接放在压缩包根目录**，不要外面再套一层文件夹。根目录要有：
   - iOS：`.github/`、`.gitignore`、`project.yml`、`Rebuild/`、`README.md`、`STATUS.md`、`PLAN.md`

@@ -56,6 +56,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     // 实况连拍：每张各自一行进度（取景框左上角），全部拍完 / 存完后一起消失
     private final class LiveTask {
         let n: Int, t0 = Date(), total: Double, photo: URL
+        var actualDur = 0.0                // 实际录到的秒数（写 Live Photo 元数据用，比请求的时长更准）
         var stillDone = false, stillOK = false
         var liveDone = false, mov: URL?, stillAt = 0.0, err: String?
         var phase = 0                      // 0 录制中 · 1 合成保存中 · 2 完成 · 3 失败
@@ -934,8 +935,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             let t = LiveTask(n: liveSeq, total: max(1.0, liveSeconds), photo: url)
             task = t; liveTasks.append(t); saving += 1
             addLiveRow(t)
-            engine.captureLive(totalSeconds: liveSeconds) { [weak self] mov, still, err in
-                DispatchQueue.main.async { self?.liveCaptured(t, mov, still, err) }
+            engine.captureLive(totalSeconds: liveSeconds) { [weak self] mov, still, dur, err in
+                DispatchQueue.main.async { self?.liveCaptured(t, mov, still, dur, err) }
             }
         }
         engine.takePhoto(to: url, heif: heif) { [weak self] ok, err in
@@ -949,8 +950,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
 
     /// 实况视频收完（或失败）
-    private func liveCaptured(_ t: LiveTask, _ mov: URL?, _ still: Double, _ err: String?) {
-        t.liveDone = true; t.mov = mov; t.stillAt = still; t.err = err
+    private func liveCaptured(_ t: LiveTask, _ mov: URL?, _ still: Double, _ dur: Double, _ err: String?) {
+        t.liveDone = true; t.mov = mov; t.stillAt = still; t.actualDur = dur; t.err = err
         if mov != nil { t.phase = 1 } else { t.note = err ?? "" }
         refreshLiveRows()
         liveTryFinish(t)
@@ -971,7 +972,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             liveTaskEnded(t, msg: "实况失败：\(t.err ?? "")，已保存静态照片"); return
         }
         t.phase = 1; refreshLiveRows()
-        LivePhotoSaver.saveWithID(photo: t.photo, video: mov, duration: t.total, still: t.stillAt) { [weak self] ok, msg, id in
+        LivePhotoSaver.saveWithID(photo: t.photo, video: mov, duration: t.actualDur > 0 ? t.actualDur : t.total, still: t.stillAt) { [weak self] ok, msg, id in
             guard let self = self else { return }
             self.saving -= 1
             self.items.append(Item(kind: "photo", url: t.photo, saved: ok))

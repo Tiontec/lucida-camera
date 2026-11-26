@@ -8,6 +8,12 @@ struct AboutSection { let heading: String; let paragraph: String }
 enum ContentData {
     /// 更新记录，新的在前（来源 updates.json）
     static let updates: [UpdateEntry] = [
+        UpdateEntry(version: "2.2.1", date: "2026-11-24", group: "new", items: [
+            UpdateItem(title: "实况更稳", body: "拍照的 4K 合成改用独立的图像上下文，不再和取景、实况抢同一个处理器；编码器卡住时不再清空正在等的实况画面（连拍后面几张失败的主要原因）；收尾等待从 1.5 秒延长到 4 秒，5 秒实况不再被截成 3 秒。每张实况会记一条日志（取到几帧、多少秒），录短了会有警告。"),
+            UpdateItem(title: "变焦扩充到 100×", body: "硬件变焦到顶后，剩下的倍数用软件裁剪放大（取景、录像、拍照、实况都一样，画质会下降）。主页变焦条和转盘可以滑到设置里选的倍数（30× / 50× / 80× / 100×）。"),
+            UpdateItem(title: "图标与开屏", body: "应用图标换成新设计，四角的黑边补成玻璃颜色；开屏图去掉黑色描边，背景与深色界面衔接。安卓同步更新。"),
+            UpdateItem(title: "安卓相机", body: "预览请求的变焦改为分段下发（硬件部分用比例，超出部分用裁剪），和 iOS 的变焦上限保持一致。"),
+        ]),
         UpdateEntry(version: "11.6.0", date: "2026年11月18日", group: "old", items: [
             UpdateItem(title: "设置页开始原生化（B1b-1）", body: "「超广角倍数 / 长焦镜头倍数 / 变焦放大取景框 / 倍率镜头切换 / 灵动岛样式 / 实况保存方式 / 变焦速度」七个选项页改成原生页面（苹果 / 安卓一致），选一项立即生效，设置行上显示的当前值同步更新；网页里对应的页面和代码已删除。"),
             UpdateItem(title: "实况连拍不再闪退", body: "连拍十几张时，每张 4K 照片同时重新编码、同时写入相册，内存撑爆。现在存相册排成一队逐张处理，4K 调色的中间缓存每张拍完就清。"),

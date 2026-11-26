@@ -66,10 +66,11 @@ final class LiveEncoder {
     /// 送一帧进去（在取景回调所在的线程调用；编码是异步的，结果在 append 里入库）
     func encode(_ pb: CVPixelBuffer, pts: CMTime) {
         if dead { return }
-        // 看门狗：送进去 45 帧（约 1.5 秒）一帧都没吐出来，或连续 5 次报错 → 重建编码器
+        // 看门狗：送进去 150 帧（约 5 秒）一帧都没吐出来，或连续 5 次报错 → 重建编码器。
+        // 有实况还在等样本时不重建：重建会清掉库存，正在等的那张实况就会缺画面（连拍后面几张失败的主要原因之一）
         lock.lock()
         if outCount == lastOutSeen { stalled += 1 } else { lastOutSeen = outCount; stalled = 0 }
-        let needRestart = stalled >= 45 || errStreak >= 5
+        let needRestart = (stalled >= 150 || errStreak >= 5) && holds.isEmpty
         lock.unlock()
         if needRestart || (session == nil && stalled % 30 == 0) { restartSession() }
         guard let sess = session else { return }
@@ -139,9 +140,9 @@ final class LiveEncoder {
     func hold(_ id: UUID, from t: CMTime) { lock.lock(); holds[id] = t; lock.unlock() }
     func release(_ id: UUID) { lock.lock(); holds[id] = nil; lock.unlock() }
 
-    /// 等编码器把 t 之前（含）的帧都吐出来。不用 CompleteFrames（编码器出问题时它会一直卡住、把后面所有实况都堵死），改成最多等 1.5 秒
-    func finish(until t: CMTime) {
-        let deadline = Date().addingTimeInterval(1.5)
+    /// 等编码器把 t 之前（含）的帧都吐出来。不用 CompleteFrames（编码器出问题时它会一直卡住、把后面所有实况都堵死），改成最多等 timeout 秒（默认 4 秒，原来 1.5 秒太短，会把 5 秒实况截成 3 秒）
+    func finish(until t: CMTime, timeout: TimeInterval = 4.0) {
+        let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             lock.lock(); let last = samples.last?.pts; lock.unlock()
             if let l = last, CMTimeCompare(l, CMTimeSubtract(t, CMTime(value: 1, timescale: 20))) >= 0 { return }
@@ -221,7 +222,7 @@ final class LiveEncoder {
                 var out: CMSampleBuffer?
                 guard CMSampleBufferCreateCopyWithNewTiming(allocator: nil, sampleBuffer: s.sb, sampleTimingEntryCount: 1,
                                                             sampleTimingArray: &timing, sampleBufferOut: &out) == noErr, let o = out else { continue }
-                if !vi.append(o) { break }
+                if !vi.append(o) { AppLog.warn("实况", "视频样本写入中断：\(w.error?.localizedDescription ?? "未知")"); break }
                 lastEnd = CMTimeAdd(t, timing.duration)
             }
             vi.markAsFinished()
