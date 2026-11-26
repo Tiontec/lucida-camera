@@ -2,6 +2,7 @@ import UIKit
 import AVKit
 import Photos
 import PhotosUI
+import UniformTypeIdentifiers
 
 /// 相册里的一项：系统相册里的资源（正常情况），或者本次拍摄留下的文件（没有系统相册读取权限时的后备）
 enum DualEntry {
@@ -54,7 +55,7 @@ final class DualAlbumViewController: UIViewController, UICollectionViewDataSourc
         let back = DualCircleButton(symbol: "chevron.down", size: 38); back.setGlass(DualSettings.shared.glass)
         back.addTarget(self, action: #selector(close), for: .touchUpInside)
         titleLabel.textColor = .white; titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
-        importBtn.setTitle("导入", for: .normal); importBtn.tintColor = dualYellow; importBtn.isHidden = true
+        importBtn.setTitle("导入", for: .normal); importBtn.tintColor = dualYellow; importBtn.isHidden = false
         importBtn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
         importBtn.addTarget(self, action: #selector(doImport), for: .touchUpInside)
         selectBtn.setTitle("选择", for: .normal); selectBtn.tintColor = .white
@@ -133,7 +134,46 @@ final class DualAlbumViewController: UIViewController, UICollectionViewDataSourc
     }
 
     @objc private func close() { dismiss(animated: true) { self.onClose?() } }
-    @objc private func doImport() { dismiss(animated: true) { self.onImport?() } }
+    /// 导入：从系统相册或文件里选照片 / 视频，复制进澄影的存储（照片库里的澄影记录，并记入澄影列表）
+    @objc private func doImport() {
+        let sheet = UIAlertController(title: "导入", message: "选择要导入的来源", preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "从系统相册选择", style: .default) { [weak self] _ in self?.presentPhotoPicker() })
+        sheet.addAction(UIAlertAction(title: "从文件选择", style: .default) { [weak self] _ in self?.presentDocumentPicker() })
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = importBtn
+        present(sheet, animated: true)
+    }
+
+    private func presentPhotoPicker() {
+        var cfg = PHPickerConfiguration(photoLibrary: .shared())
+        cfg.selectionLimit = 0                       // 0 = 不限数量
+        cfg.filter = nil                             // 照片和视频都可以选
+        let p = PHPickerViewController(configuration: cfg)
+        p.delegate = self
+        present(p, animated: true)
+    }
+
+    private func presentDocumentPicker() {
+        let p = UIDocumentPickerViewController(forOpeningContentTypes: [.image, .movie], asCopy: true)
+        p.allowsMultipleSelection = true
+        p.delegate = self
+        present(p, animated: true)
+    }
+
+    /// 把一个临时文件存进澄影：照片库 + 记入澄影列表（之后相册里会带橙框）
+    private func importFile(_ url: URL, isVideo: Bool, done: @escaping () -> Void) {
+        let dst = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + url.pathExtension)
+        do { try FileManager.default.copyItem(at: url, to: dst) } catch { done(); return }
+        PhotoSaver.saveWithID(file: dst, isVideo: isVideo) { ok, _, id in
+            try? FileManager.default.removeItem(at: dst)
+            if ok, let id = id { DualLibrary.add(id) }
+            done()
+        }
+    }
+
+    private func finishImport(_ count: Int) {
+        if count > 0 { reload() }
+    }
     @objc private func openSettings() {
         if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
     }
@@ -489,5 +529,40 @@ private final class ZoomCell: UICollectionViewCell, UIScrollViewDelegate {
             let p = g.location(in: content), w = sv.bounds.width / 2.5, h = sv.bounds.height / 2.5
             sv.zoom(to: CGRect(x: p.x - w / 2, y: p.y - h / 2, width: w, height: h), animated: true)
         }
+    }
+}
+
+// MARK: - 导入：系统相册选择器 / 文件选择器
+extension DualAlbumViewController: PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        let group = DispatchGroup()
+        var n = 0
+        for r in results {
+            let prov = r.itemProvider
+            let isVideo = prov.hasItemConformingToTypeIdentifier(UTType.movie.identifier)
+            let type = isVideo ? UTType.movie.identifier : UTType.image.identifier
+            guard prov.hasItemConformingToTypeIdentifier(type) else { continue }
+            group.enter()
+            prov.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
+                guard let url = url else { group.leave(); return }
+                // 临时文件只在回调里有效：先复制到我们自己的临时目录，再交给 importFile
+                let copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + url.pathExtension)
+                try? FileManager.default.copyItem(at: url, to: copy)
+                self.importFile(copy, isVideo: isVideo) { DispatchQueue.main.async { n += 1; group.leave() } }
+            }
+        }
+        group.notify(queue: .main) { self.finishImport(n) }
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        let group = DispatchGroup()
+        var n = 0
+        for u in urls {
+            let isVideo = UTType(filenameExtension: u.pathExtension)?.conforms(to: .movie) ?? false
+            group.enter()
+            importFile(u, isVideo: isVideo) { DispatchQueue.main.async { n += 1; group.leave() } }
+        }
+        group.notify(queue: .main) { self.finishImport(n) }
     }
 }

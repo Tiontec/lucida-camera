@@ -8,6 +8,9 @@ struct AboutSection { let heading: String; let paragraph: String }
 enum ContentData {
     /// 更新记录，新的在前（来源 updates.json）
     static let updates: [UpdateEntry] = [
+        UpdateEntry(version: "2.7.0", date: "2026-11-26", group: "new", items: [
+            UpdateItem(title: "相册导入", body: "相册右上角「导入」现在是从系统相册或文件里选照片和视频（可多选），复制进澄影自己的存储，并出现在澄影相册里（带橙框）。之前的「导入」是把本次拍的照片导入澄影，已经改掉。"),
+        ]),
         UpdateEntry(version: "2.6.0", date: "2026-11-26", group: "new", items: [
             UpdateItem(title: "变焦放大取景框", body: "设置 → 变焦放大取景框 选的档位（10 / 20 / 25 / 30 / 50 / 80 / 100）以上，相机左上角出现小框，用黄框标出现在放大到的位置。两端都有。"),
         ]),
