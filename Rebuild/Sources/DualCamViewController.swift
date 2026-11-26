@@ -82,6 +82,9 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     // MARK: - 生命周期
 
     private var skinMasc: UIImageView?
+    /// 变焦放大取景框（左上角）
+    private let zoomMini = DualZoomMiniView()
+    private var zoomFrameThreshold: CGFloat { CGFloat(Double(st.zoomFrame) ?? 10) }
     /// 皮肤（设置 → 外观 → 皮肤）：原中版 = 黑底；大肥鱼 = 深蓝底 + 吉祥物（图片取自 11.6.x 网页，位置是近似的）
     func applySkin() {
         let fish = dualSkinIsFish
@@ -110,6 +113,13 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         super.viewDidLoad()
         view.backgroundColor = .black
         applySkin()
+        view.addSubview(zoomMini)
+        zoomMini.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            zoomMini.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            zoomMini.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 96),
+            zoomMini.widthAnchor.constraint(equalToConstant: 84),
+            zoomMini.heightAnchor.constraint(equalToConstant: 56)])
         mode = startMode
         engine.dual = st.dualOn && DualCamEngine.isSupported
         engine.layout.backIsMain = engine.dual ? st.backIsMain : !st.singleFront
@@ -291,7 +301,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         countLabel.shadowColor = UIColor(white: 0, alpha: 0.5); countLabel.shadowOffset = CGSize(width: 0, height: 2)
         countLabel.isHidden = true; countLabel.isUserInteractionEnabled = false
         view.addSubview(zoomCtl)
-        zoomCtl.onZoom = { [weak self] z in guard let self = self else { return }; self.engine.setZoom(back: self.mainIsBack, z) }
+        zoomCtl.onZoom = { [weak self] z in guard let self = self else { return }; self.engine.setZoom(back: self.mainIsBack, z); self.zoomMini.update(zoom: z, threshold: self.zoomFrameThreshold) }
         zoomCtl.onSettle = { [weak self] z in self?.zoomSettled(z) }
 
         // 顶部

@@ -8,6 +8,9 @@ struct AboutSection { let heading: String; let paragraph: String }
 enum ContentData {
     /// 更新记录，新的在前（来源 updates.json）
     static let updates: [UpdateEntry] = [
+        UpdateEntry(version: "2.6.0", date: "2026-11-26", group: "new", items: [
+            UpdateItem(title: "变焦放大取景框", body: "设置 → 变焦放大取景框 选的档位（10 / 20 / 25 / 30 / 50 / 80 / 100）以上，相机左上角出现小框，用黄框标出现在放大到的位置。两端都有。"),
+        ]),
         UpdateEntry(version: "2.5.0", date: "2026-11-26", group: "new", items: [
             UpdateItem(title: "变焦条 100 刻度", body: "设置里选 100× 后，主页的变焦条和转盘都有 100 的刻度（之前递推时跳过了 100）。"),
             UpdateItem(title: "皮肤", body: "设置 → 外观 → 皮肤 可以选「大肥鱼」：蓝色强调色、深蓝背景、吉祥物图。原中版不变。"),
