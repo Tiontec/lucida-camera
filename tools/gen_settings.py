@@ -81,6 +81,7 @@ C.append(coll("shoot", "取景与拍摄", "inline", [
     group([item("ratio", "画幅比例", "seg", default="16:9", reconfigure=True, icon="aspectratio",
                 sub="取景、拍照、录像、实况的成品都按这个比例。片门全开时固定为 4:3",
                 options=[opt("16:9", "16:9"), opt("4:3", "4:3"), opt("1:1", "1:1")])]),
+    group([item("sFull", "片门全开（单摄）", "switch", scope="single", default="0", reconfigure=True, icon="rectangle.expand.vertical", sub="单摄时用 4:3 整块传感器规格，成品 3:4。双摄的片门全开在「双摄设置」里，两者互不影响")]),
     group([item("flash", "闪光灯", "seg", default="0", icon="bolt",
                 sub="拍照补光；自动 = 暗处才闪；拍实况时不起作用",
                 options=[opt("0", "关"), opt("1", "自动"), opt("2", "开")])]),

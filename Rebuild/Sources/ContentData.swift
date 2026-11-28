@@ -8,6 +8,10 @@ struct AboutSection { let heading: String; let paragraph: String }
 enum ContentData {
     /// 更新记录，新的在前（来源 updates.json）
     static let updates: [UpdateEntry] = [
+        UpdateEntry(version: "2.7.1", date: "2026-11-26", group: "new", items: [
+            UpdateItem(title: "变焦倍率扩充生效", body: "在设置里改了「变焦倍率扩充」，变焦条和转盘马上跟着变（之前要切一次双摄才生效），单摄也能滑到 100×。"),
+            UpdateItem(title: "片门全开分开", body: "单摄的片门全开在「取景与拍摄」里单独一个开关；双摄的片门全开在「双摄设置」里。两者互不影响。"),
+        ]),
         UpdateEntry(version: "2.7.0", date: "2026-11-26", group: "new", items: [
             UpdateItem(title: "相册导入", body: "相册右上角「导入」现在是从系统相册或文件里选照片和视频（可多选），复制进澄影自己的存储，并出现在澄影相册里（带橙框）。之前的「导入」是把本次拍的照片导入澄影，已经改掉。"),
         ]),

@@ -100,6 +100,14 @@ extension SettingsRegistry {
             var items: [SItem] = []
             do {
                 var opts: [SOption] = []
+                items.append(SItem(id: "sFull", title: "片门全开（单摄）", sub: "单摄时用 4:3 整块传感器规格，成品 3:4。双摄的片门全开在「双摄设置」里，两者互不影响", type: .toggle, scope: .single, status: .live, def: "0", options: opts, notes: [], dest: "", inline: false, reconfigure: true, icon: "rectangle.expand.vertical", min: 0, max: 0))
+            }
+            groups.append(SGroup(head: "", foot: "", items: items))
+        }
+        do {
+            var items: [SItem] = []
+            do {
+                var opts: [SOption] = []
                 opts.append(SOption(v: "0", title: "关", sub: "", short: "关", soon: false))
                 opts.append(SOption(v: "1", title: "自动", sub: "", short: "自动", soon: false))
                 opts.append(SOption(v: "2", title: "开", sub: "", short: "开", soon: false))

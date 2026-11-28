@@ -81,6 +81,8 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
 
     // MARK: - 生命周期
 
+    /// 当前模式的片门全开：双摄读「双摄设置」里的，单摄读「取景与拍摄」里单摄的
+    private var fullNow: Bool { engine.dual ? st.fullSensor : SettingsStore.bool("sFull") }
     private var skinMasc: UIImageView?
     /// 变焦放大取景框（左上角）
     private let zoomMini = DualZoomMiniView()
@@ -180,7 +182,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
     }
 
     private func currentSpec() -> DualSpec {
-        var s = DualSpec(); s.res = st.res; s.fps = st.fps; s.full = st.fullSensor; s.ultraWide = wantUW; s.tele = wantTele
+        var s = DualSpec(); s.res = st.res; s.fps = st.fps; s.full = fullNow; s.ultraWide = wantUW; s.tele = wantTele
         s.aspect = stageFrame.height > 0 ? stageFrame.width / stageFrame.height : 9.0 / 16.0
         return s
     }
@@ -251,7 +253,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         let stageTop = top + 52
         let avail = H - stageTop - barH
         var sw = W, sh: CGFloat
-        if st.fullSensor { sh = min(W * 4 / 3, avail); sw = sh * 3 / 4 }
+        if fullNow { sh = min(W * 4 / 3, avail); sw = sh * 3 / 4 }
         else {
             switch st.ratio {
             case "4:3": sh = min(W * 4 / 3, avail); sw = sh * 3 / 4
@@ -480,7 +482,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         let fmt = st.heif ? "HEIF" : "JPEG"
         let r = engine.spec.res, f = engine.spec.fps
         let shown = ready ? (r == 2160 ? "4K" : "\(r)p") + " · \(f)" : (st.res == 2160 ? "4K" : "\(st.res)p") + " · \(st.fps)"
-        specPill.setTitle("\(shown) · \(fmt)" + (st.fullSensor ? " · 片门" : "") + ["", " · ⚡自动", " · ⚡开"][st.flashMode] + (st.timerSec > 0 ? " · ⏱\(st.timerSec)s" : ""), for: .normal)
+        specPill.setTitle("\(shown) · \(fmt)" + (fullNow ? " · 片门" : "") + ["", " · ⚡自动", " · ⚡开"][st.flashMode] + (st.timerSec > 0 ? " · ⏱\(st.timerSec)s" : ""), for: .normal)
     }
     private func syncButtons() {
         btnLive.active = st.liveOn; btnLive.isEnabled = mode == .photo; btnLive.alpha = mode == .photo ? 1 : 0.4
@@ -634,7 +636,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
         case 3:
             let r = ["16:9", "4:3", "1:1"][idx]
             if r == st.ratio { return }
-            if st.fullSensor { specSegs[3].select(["16:9", "4:3", "1:1"].firstIndex(of: st.ratio) ?? 0); say("「片门全开」开着时画幅固定为 4:3，关掉后才能改", 3.5); return }
+            if fullNow { specSegs[3].select(["16:9", "4:3", "1:1"].firstIndex(of: st.ratio) ?? 0); say("「片门全开」开着时画幅固定为 4:3，关掉后才能改", 3.5); return }
             if engine.isRecording || reconfiguring || !ready { specSegs[3].select(["16:9", "4:3", "1:1"].firstIndex(of: st.ratio) ?? 0); say("录像中或正在切换，稍后再改画幅", 3); return }
             st.ratio = r
             view.setNeedsLayout(); view.layoutIfNeeded()
@@ -682,6 +684,7 @@ final class DualCamViewController: UIViewController, UIGestureRecognizerDelegate
             var l = self.engine.layout; l.border = self.st.border; l.mirrorFront = self.st.mirror; self.engine.layout = l
             self.engine.fullRate = self.st.fullRate
             self.applySkin(); self.applyGlass(); self.syncSpecPill(); self.syncButtons(); self.syncOverlays()
+            self.syncZoomRange(resetTo: nil)          // 变焦倍率扩充改了，变焦条马上跟上
             if recfg { self.view.setNeedsLayout(); self.view.layoutIfNeeded(); self.applySpec() }
         }
         v.modalPresentationStyle = .pageSheet

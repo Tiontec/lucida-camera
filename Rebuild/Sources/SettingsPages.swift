@@ -248,7 +248,7 @@ final class SettingsPageViewController: UIViewController {
         let id = it.id, recfg = it.reconfigure, opts = it.options
         seg.onChange = { [weak self, weak seg] i in
             guard i >= 0 && i < opts.count else { return }
-            if id == "ratio" && SettingsStore.bool("full") {       // 片门全开时画幅固定 4:3：不改，选中态退回去
+            if id == "ratio" && SettingsStore.bool(SettingsStore.bool("dualOn") ? "full" : "sFull") {       // 片门全开时画幅固定 4:3：不改，选中态退回去
                 if let idx = opts.firstIndex(where: { $0.v == SettingsStore.get("ratio") }) { seg?.select(idx) }
                 self?.showToast("「片门全开」开着时画幅固定为 4:3，关掉后才能改")
                 return
